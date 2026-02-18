@@ -226,26 +226,43 @@ def process_adb_device(serial: str):
         
         log(serial, f"Version: {version} ({clean_version})")
         
-        # Search for matching image
-        matching_image = None
+        # Search for ANY local image for this model to determine target version
+        target_version = version
+        target_clean_version = clean_version
+        local_boot_image = None
+
         if IMAGES_DIR.exists():
             for img_file in IMAGES_DIR.glob('*.img'):
-                # Check model matches AND (clean version OR version with dots matches)
-                if model.upper() in img_file.name.upper() and \
-                   (clean_version in img_file.name or version in img_file.name):
-                    matching_image = img_file
+                if model.upper() in img_file.name.upper():
+                    # Found an image for this model
+                    local_boot_image = img_file
+                    # Try to extract version
+                    v_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', img_file.name)
+                    if v_match:
+                        found_ver = v_match.group(1)
+                        # If found version is different (upgrade/downgrade), use it as target
+                        if found_ver != version:
+                            target_version = found_ver
+                            target_clean_version = found_ver.replace('.', '')
+                            log(serial, f"Found local boot image for version {target_version} (Device: {version}). Switching target.")
                     break
         
-        if matching_image:
-            log(serial, f"Found matching image: {matching_image.name}")
-            log(serial, "Rebooting to bootloader...")
-            run_command(['adb', '-s', serial, 'reboot', 'bootloader'])
-            # Release lock immediately so Fastboot can pick it up
-            release_device_lock(serial, lock)
-            return
+        # 1. If we have local image AND it matches current version -> flash it
+        if local_boot_image and (target_version == version):
+             log(serial, f"Found matching image: {local_boot_image.name}")
+             log(serial, "Rebooting to bootloader...")
+             run_command(['adb', '-s', serial, 'reboot', 'bootloader'])
+             release_device_lock(serial, lock)
+             return
+
+        # 2. If we have local image but version mismatch -> Search cloud for TARGET version
+        # 3. If no local image -> Search cloud for CURRENT version
         
-        # No local image, try cloud
-        log(serial, "No matching local image. Searching cloud...")
+        # Update version variables for cloud search
+        version = target_version
+        clean_version = target_clean_version
+        
+        log(serial, f"Searching cloud for version {version}...")
         lower_model = model.lower()
         ver_head = clean_version[:2]
         ver_tail = clean_version[2:]
@@ -270,7 +287,7 @@ def process_adb_device(serial: str):
             url = f"{S3_BASE_URL}/{candidate}"
             try:
                 req = urllib.request.Request(url, method='HEAD')
-                response = urllib.request.urlopen(req, timeout=10)
+                response = urllib.request.urlopen(req, timeout=5)
                 if response.status == 200:
                     found_url = url
                     found_name = candidate
@@ -279,19 +296,37 @@ def process_adb_device(serial: str):
                 continue
         
         if found_url:
-            log(serial, f"Found update on cloud: {found_name}")
-            log(serial, "Downloading...")
+            log(serial, f"Found update on server: {found_name}")
             
             FULL_DIR.mkdir(exist_ok=True)
             local_file = FULL_DIR / found_name
             
             try:
-                urllib.request.urlretrieve(found_url, local_file)
-                log(serial, "Download complete. Pushing to /sdcard/...")
+                # Check if already downloaded
+                if local_file.exists():
+                    log(serial, f"File already exists locally: {local_file.name}")
+                else:
+                    log(serial, "Downloading from cloud...")
+                    urllib.request.urlretrieve(found_url, local_file)
+                    log(serial, "Download complete")
+
+                # Check if file already exists on device
+                log(serial, "Checking if file already exists on device...")
+                check_out, _, check_code = run_command([
+                    'adb', '-s', serial, 'shell', 'ls', f"'/sdcard/{found_name}'"
+                ])
+                
+                if check_code == 0 and found_name in check_out:
+                     log(serial, "File already exists on device. Skipping push.")
+                     log(serial, "--> Please install update via Settings -> Local Install <--")
+                     release_device_lock(serial, lock)
+                     return
+
+                log(serial, "Pushing to /sdcard/ (this may take time)...")
                 
                 stdout, stderr, returncode = run_command([
                     'adb', '-s', serial, 'push', str(local_file), '/sdcard/'
-                ], timeout=600)  # 10 min timeout for large files
+                ], timeout=1200)  # 20 min timeout for large files
                 
                 if returncode == 0:
                     log(serial, "Push complete! Install via Settings -> Local Install")
