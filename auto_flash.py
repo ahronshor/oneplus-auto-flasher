@@ -230,7 +230,9 @@ def process_adb_device(serial: str):
         matching_image = None
         if IMAGES_DIR.exists():
             for img_file in IMAGES_DIR.glob('*.img'):
-                if model.upper() in img_file.name.upper() and clean_version in img_file.name:
+                # Check model matches AND (clean version OR version with dots matches)
+                if model.upper() in img_file.name.upper() and \
+                   (clean_version in img_file.name or version in img_file.name):
                     matching_image = img_file
                     break
         
