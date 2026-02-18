@@ -1,0 +1,15 @@
+# Device Mapping File
+# This file matches "fastboot getvar product" (codename) to a specific Model Number.
+# Format: codename=model
+
+# Unique matches:
+k6897v1_64=CPH2719
+
+# Shared Platform matches (Collisions):
+# "canoe" (OnePlus 15R variants)
+canoe=CPH2769
+canoe=CPH2747
+
+# "pineapple" is Snapdragon 8 Gen 3 platform, shared by multiple devices (Nord 4 / Nord 5)
+pineapple=CPH2709
+pineapple=CPH2663
