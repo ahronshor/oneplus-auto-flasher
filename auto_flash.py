@@ -257,7 +257,10 @@ def process_adb_device(serial: str):
             # Try formats with dots (e.g., 15.0.1.503)
             f"{lower_model}-{version}.zip",
             f"{lower_model}_{version}.zip",
-            f"{model}-{version}.zip"
+            f"{model}-{version}.zip",
+            # Complex formats (op_model-MODEL_version...)
+            f"op_{lower_model}-{model.upper()}_{version}.zip",
+            f"op_{lower_model}-{model.upper()}_{version}(EX01).zip"
         ]
         
         found_url = None
