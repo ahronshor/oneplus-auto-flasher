@@ -72,6 +72,26 @@ chmod +x auto_flash.py
 ./auto_flash.py
 ```
 
+## Web UI (Chrome / Edge)
+
+For end-users, there is now a browser UI in:
+
+```text
+web/
+```
+
+It provides Hebrew step-by-step guidance for:
+- USB mode check (ADB/Fastboot)
+- Device model/version detection via ADB
+- Clear action guidance (update first vs flash now)
+- Fastboot flashing of `init_boot`
+
+See:
+
+```text
+web/README.md
+```
+
 ## How It Works
 
 1. **Connect Device(s)** via USB

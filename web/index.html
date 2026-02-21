@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OnePlus Web Flasher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-glow" aria-hidden="true"></div>
+
+    <main class="layout">
+      <header class="hero">
+        <p class="kicker">כלי צריבה ללקוחות קצה</p>
+        <h1>OnePlus Web Flasher</h1>
+        <p class="hero-subtitle">
+          מחברים מכשיר, מזהים דגם וגרסה, ומקבלים הוראות ברורות אם צריך עדכון או שאפשר לצרוב מיד.
+        </p>
+        <div class="hero-warning">
+          <strong>חשוב:</strong>
+          צריבה ופתיחת Bootloader עלולות למחוק נתונים. מומלץ לבצע גיבוי מלא לפני תחילת התהליך.
+        </div>
+      </header>
+
+      <section class="panel stage-banner" id="panel-stage-banner">
+        <h2 id="stage-title">שלב נוכחי: חיבור והכנת מכשיר</h2>
+        <p id="stage-description">בצעו את צ'קליסט ההכנה ואז התחברו ב-ADB.</p>
+      </section>
+
+      <section class="panel" id="panel-preflight">
+        <h2>לפני שמתחילים: פתיחת מצב מפתחים וחיבור ADB</h2>
+        <div class="checklist-grid">
+          <label class="check-item"><input id="pre-dev-mode" type="checkbox" /> הפעלתי Developer Mode (7 לחיצות על Build Number)</label>
+          <label class="check-item"><input id="pre-dev-options" type="checkbox" /> נכנסתי ל-Developer Options במכשיר</label>
+          <label class="check-item"><input id="pre-usb-debug" type="checkbox" /> הפעלתי USB Debugging</label>
+          <label class="check-item"><input id="pre-oem-unlock" type="checkbox" /> הפעלתי OEM Unlocking</label>
+          <label class="check-item"><input id="pre-rsa" type="checkbox" /> אישרתי Allow USB debugging במסך המכשיר</label>
+        </div>
+        <div id="preflight-status" class="status-line">צ'קליסט הכנה: 0/5 הושלם.</div>
+        <button id="btn-preflight-reset" class="btn btn-secondary">איפוס צ'קליסט</button>
+      </section>
+
+      <section class="grid" id="panel-connect-grid">
+        <article class="panel" id="panel-adb-connect">
+          <h2>שלב 1: חיבור וזיהוי ב-ADB</h2>
+          <p>לחצו על `חיבור ADB`, בחרו את המכשיר בחלון של Chrome ואשרו USB Debugging במכשיר.</p>
+          <button id="btn-connect-adb" class="btn">חיבור ADB</button>
+          <button id="btn-reboot-bootloader" class="btn btn-secondary" disabled>העבר לבוטלואדר (Reboot to Fastboot)</button>
+          <div id="adb-status" class="status-line">לא מחובר ל-ADB.</div>
+          <div class="status-line">
+            בדיקה מתקדמת (אופציונלית): אם החיבור נכשל, אפשר להריץ בדיקת מצב USB.
+            <div style="margin-top: 0.5rem;">
+              <button id="btn-check-usb" class="btn btn-secondary">בדוק מצב חיבור (ADB / Fastboot)</button>
+            </div>
+            <div id="usb-status" class="status-line" style="margin-top: 0.5rem;">עדיין לא בוצעה בדיקה.</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel" id="panel-device-details">
+        <h2>זיהוי מכשיר</h2>
+        <div class="kv-table" id="device-details">
+          <div class="kv-row"><span>דגם:</span><strong id="device-model">-</strong></div>
+          <div class="kv-row"><span>קוד מוצר:</span><strong id="device-product">-</strong></div>
+          <div class="kv-row"><span>גרסה נוכחית:</span><strong id="device-version">-</strong></div>
+          <div class="kv-row"><span>מספר סריאלי:</span><strong id="device-serial">-</strong></div>
+        </div>
+      </section>
+
+      <section class="panel" id="action-panel">
+        <h2>מה צריך לעשות עכשיו?</h2>
+        <div id="recommended-action" class="action-message neutral">
+          חברו מכשיר ב-ADB כדי לקבל הנחיה אוטומטית.
+        </div>
+        <a id="update-link" class="btn-link hidden" href="#" target="_blank" rel="noopener noreferrer">הורדת קובץ עדכון מומלץ</a>
+      </section>
+
+      <section class="panel" id="panel-update">
+        <h2>שלב 2.5: עדכון גרסה (ADB Push)</h2>
+        <p>בשלב זה בודקים אם קובץ ה-ZIP כבר ירד. אם כן דוחפים למכשיר, ואם לא מורידים ואז דוחפים.</p>
+        <a id="btn-download-update" class="btn-link hidden" href="#" target="_blank" rel="noopener noreferrer">הורד ZIP עדכון</a>
+        <button id="btn-pick-downloads" class="btn btn-secondary">בחר תיקיית הורדות</button>
+        <button id="btn-find-update-zip" class="btn btn-secondary" disabled>חפש ZIP עדכון בתיקייה</button>
+        <button id="btn-push-update-zip" class="btn" disabled>דחוף ZIP למכשיר (ADB push)</button>
+        <button id="btn-mark-update-installed" class="btn btn-secondary" disabled>סיימתי להתקין עדכון במכשיר</button>
+        <div id="downloads-status" class="status-line">תיקיית הורדות עדיין לא נבחרה.</div>
+        <div id="push-status" class="status-line">טרם בוצע ADB push.</div>
+        <div id="post-push-guide" class="status-line">
+          אחרי ה-push: במכשיר להיכנס ל-Settings -> About device -> Version -> Local install ולבצע התקנה.
+        </div>
+        <div class="progress-wrap hidden" id="push-progress-wrap">
+          <div id="push-progress-bar"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-progress">
+        <h2>התקדמות למכשיר</h2>
+        <div class="kv-row"><span>סריאלי פעיל:</span><strong id="progress-serial">-</strong></div>
+        <ol class="step-list">
+          <li id="step-adb" class="step-item pending">1. זיהוי ADB ודגם/גרסה</li>
+          <li id="step-update-pushed" class="step-item pending">2. קובץ עדכון הועבר למכשיר</li>
+          <li id="step-update-installed" class="step-item pending">3. המשתמש התקין עדכון במכשיר</li>
+          <li id="step-bootloader-unlocked" class="step-item pending">4. Bootloader נפתח ואושרה פעולה (Volume +)</li>
+          <li id="step-flashed" class="step-item pending">5. צריבת init_boot הסתיימה</li>
+        </ol>
+      </section>
+
+      <section class="grid two" id="panel-fastboot-flash-grid">
+        <article class="panel" id="panel-fastboot">
+          <h2>שלב 3: חיבור Fastboot</h2>
+          <p>לאחר שהמכשיר בבוטלואדר, התחברו מחדש במצב Fastboot.</p>
+          <button id="btn-connect-fastboot" class="btn">חיבור Fastboot</button>
+          <button id="btn-unlock" class="btn btn-danger" disabled>Bootloader Unlock (מוחק נתונים)</button>
+          <div id="fastboot-status" class="status-line">לא מחובר ל-Fastboot.</div>
+        </article>
+
+        <article class="panel" id="panel-flash">
+          <h2>שלב 4: צריבת init_boot</h2>
+          <p>בחרו קובץ וצרבו. ניתן לבחור קובץ מהמחשב או להשתמש בקובץ מומלץ.</p>
+          <label class="file-picker">
+            <span>בחר קובץ IMG</span>
+            <input id="flash-file" type="file" accept=".img" />
+          </label>
+          <button id="btn-flash" class="btn" disabled>צרוב init_boot</button>
+          <button id="btn-reboot-device" class="btn btn-secondary" disabled>הפעל מחדש את המכשיר</button>
+          <div class="progress-wrap hidden" id="flash-progress-wrap">
+            <div id="flash-progress-bar"></div>
+          </div>
+          <div id="flash-status" class="status-line">טרם בוצעה צריבה.</div>
+        </article>
+      </section>
+
+      <section class="panel" id="panel-instructions">
+        <h2>הוראות למשתמש</h2>
+        <ol class="instructions">
+          <li>להפעיל Developer Options, USB Debugging ו-OEM Unlocking.</li>
+          <li>לחבר כבל USB איכותי ולאשר את חלון האמון (RSA) במכשיר.</li>
+          <li>להתחבר קודם ב-ADB לזיהוי דגם/גרסה, ואז לבצע עדכון גרסה אם נדרש.</li>
+          <li>אחרי ה-push, להתקין את העדכון במכשיר ולחזור לאתר ללחיצה על "סיימתי להתקין עדכון במכשיר".</li>
+          <li>בפתיחת Bootloader: לאשר במכשיר עם Volume Plus.</li>
+          <li>מיד לאחר האישור: לחיצה ארוכה על Power + Volume Minus כדי לחזור ל-Fastboot ולצרוב מיד.</li>
+          <li>בזמן צריבה לא לנתק את הכבל ולא לסגור את חלון הדפדפן.</li>
+        </ol>
+      </section>
+
+      <section class="panel logs-panel">
+        <div class="logs-header">
+          <h2>לוג תהליך</h2>
+          <button id="btn-clear-log" class="btn btn-secondary">נקה לוג</button>
+        </div>
+        <pre id="log-output" class="log-output" aria-live="polite"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
