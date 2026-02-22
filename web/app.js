@@ -53,8 +53,10 @@ const MODULE_CANDIDATES = {
 const els = {
   btnCheckUsb: document.getElementById("btn-check-usb"),
   btnPreflightReset: document.getElementById("btn-preflight-reset"),
+  btnAutoContinue: document.getElementById("btn-auto-continue"),
   btnConnectAdb: document.getElementById("btn-connect-adb"),
   btnRebootBootloader: document.getElementById("btn-reboot-bootloader"),
+  btnRebootBootloaderFastboot: document.getElementById("btn-reboot-bootloader-fastboot"),
   btnDownloadUpdate: document.getElementById("btn-download-update"),
   btnPickDownloads: document.getElementById("btn-pick-downloads"),
   btnFindUpdateZip: document.getElementById("btn-find-update-zip"),
@@ -81,6 +83,7 @@ const els = {
   updateLink: document.getElementById("update-link"),
   stageTitle: document.getElementById("stage-title"),
   stageDescription: document.getElementById("stage-description"),
+  autoContinueStatus: document.getElementById("auto-continue-status"),
   panelPreflight: document.getElementById("panel-preflight"),
   panelConnectGrid: document.getElementById("panel-connect-grid"),
   panelDeviceDetails: document.getElementById("panel-device-details"),
@@ -137,6 +140,7 @@ const state = {
     reason: ""
   },
   uiStage: "connect",
+  autoContinueRunning: false,
   autoZipScanTimer: null,
   autoZipScanBusy: false,
   adbStackPromise: null,
@@ -209,6 +213,181 @@ function resetPreflightChecklist() {
   state.preflight = normalizePreflightState();
   persistPreflightState();
   renderPreflightChecklist();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function updateAutoContinueStatus(message, isError = false) {
+  updateStatus(els.autoContinueStatus, message, isError);
+}
+
+function getAutoContinueLabel(stage) {
+  if (stage === "connect") {
+    return state.adb ? "המשך לשלב הבא" : "התחבר אוטומטית ב-ADB";
+  }
+
+  if (stage === "update") {
+    if (state.selectedUpdateZipHandle) {
+      return "דחוף ZIP למכשיר";
+    }
+    if (state.downloadsDirHandle) {
+      return "חפש ZIP בתיקייה";
+    }
+    return "הורד והכן ZIP עדכון";
+  }
+
+  if (stage === "install") {
+    return "סימנתי שהעדכון הותקן";
+  }
+
+  if (stage === "fastboot") {
+    if (state.fastboot && state.fastbootInfo?.unlocked === "no") {
+      return "פתח Bootloader";
+    }
+    return "מעבר וחיבור ל-Fastboot";
+  }
+
+  if (stage === "flash") {
+    if (state.fastbootInfo?.unlocked !== "yes") {
+      return "פתח Bootloader לפני צריבה";
+    }
+    return "צרוב עכשיו";
+  }
+
+  if (stage === "done") {
+    return "התהליך הושלם";
+  }
+
+  if (stage === "unsupported") {
+    return "מכשיר לא נתמך";
+  }
+
+  return "המשך אוטומטי";
+}
+
+async function runAutoContinue() {
+  const stage = computeUiStage();
+
+  if (stage === "unsupported") {
+    updateAutoContinueStatus("המכשיר לא נתמך ולכן לא ניתן להריץ המשך אוטומטי.", true);
+    return;
+  }
+
+  if (stage === "done") {
+    updateAutoContinueStatus("התהליך כבר הושלם עבור המכשיר הזה.");
+    return;
+  }
+
+  if (stage === "connect") {
+    if (!state.adb) {
+      await handleConnectAdb();
+      updateAutoContinueStatus("בוצע ניסיון חיבור ADB אוטומטי.");
+      return;
+    }
+    updateAutoContinueStatus("ADB כבר מחובר. ממשיך לשלב הבא.");
+    refreshButtons();
+    return;
+  }
+
+  if (stage === "update") {
+    if (!state.downloadsDirHandle) {
+      await handlePickDownloadsFolder();
+    }
+
+    if (!state.selectedUpdateZipHandle) {
+      if (els.btnDownloadUpdate?.href && els.btnDownloadUpdate.href !== "#") {
+        window.open(els.btnDownloadUpdate.href, "_blank", "noopener,noreferrer");
+        updateAutoContinueStatus("נפתחה הורדת קובץ העדכון. מתבצעת סריקה אוטומטית לתיקיית ההורדות.");
+      }
+      startAutoUpdateZipWatch();
+      await handleFindUpdateZip({ silent: true });
+      if (!state.selectedUpdateZipHandle) {
+        return;
+      }
+    }
+
+    await handlePushUpdateZip();
+    updateAutoContinueStatus("בוצע ניסיון ADB push אוטומטי.");
+    return;
+  }
+
+  if (stage === "install") {
+    handleMarkUpdateInstalled();
+    updateAutoContinueStatus("סומן שהעדכון הותקן. ממשיך לשלב Fastboot.");
+    return;
+  }
+
+  if (stage === "fastboot") {
+    if (!state.fastboot) {
+      if (state.adb) {
+        await handleRebootToBootloader();
+        updateAutoContinueStatus("נשלחה פקודת מעבר ל-Fastboot. מנסה להתחבר...");
+        await sleep(1800);
+      }
+      await handleConnectFastboot();
+      if (!state.fastboot) {
+        updateAutoContinueStatus("לא הצלחנו להתחבר ל-Fastboot אוטומטית. אפשר לנסות שוב בלחיצה.", true);
+        return;
+      }
+    }
+
+    if (state.fastbootInfo?.unlocked === "no") {
+      await handleUnlockBootloader();
+      updateAutoContinueStatus("נשלחה פקודת unlock. אשרו במכשיר וחזרו ל-Fastboot.");
+      return;
+    }
+
+    updateAutoContinueStatus("Fastboot מחובר ומוכן לשלב הצריבה.");
+    refreshButtons();
+    return;
+  }
+
+  if (stage === "flash") {
+    if (!state.fastboot) {
+      await handleConnectFastboot();
+      if (!state.fastboot) {
+        updateAutoContinueStatus("צריך חיבור Fastboot לפני צריבה.", true);
+        return;
+      }
+    }
+
+    if (state.fastbootInfo?.unlocked !== "yes") {
+      await handleUnlockBootloader();
+      updateAutoContinueStatus("ה-Bootloader עדיין נעול. בצעו unlock ואז נסו שוב.", true);
+      return;
+    }
+
+    if (!els.flashFile.files?.[0]) {
+      updateAutoContinueStatus("כדי לבצע צריבה אוטומטית צריך קודם לבחור קובץ IMG.", true);
+      return;
+    }
+
+    await handleFlash();
+    updateAutoContinueStatus("בוצע ניסיון צריבה אוטומטי.");
+  }
+}
+
+async function handleAutoContinue() {
+  if (state.autoContinueRunning) {
+    return;
+  }
+
+  state.autoContinueRunning = true;
+  refreshButtons();
+
+  try {
+    await runAutoContinue();
+  } catch (error) {
+    updateAutoContinueStatus(`המשך אוטומטי נכשל: ${error.message}`, true);
+    appendLog(`המשך אוטומטי נכשל: ${error.message}`, "ERROR");
+  } finally {
+    state.autoContinueRunning = false;
+    refreshButtons();
+  }
 }
 
 window.addEventListener("beforeunload", () => {
@@ -1001,6 +1180,7 @@ function refreshButtons() {
   const flowEnabled = state.deviceSupport.supported !== false;
 
   els.btnRebootBootloader.disabled = !hasAdb || !flowEnabled;
+  els.btnRebootBootloaderFastboot.disabled = !hasAdb || !flowEnabled;
   els.btnPickDownloads.disabled = !("showDirectoryPicker" in window);
   els.btnFindUpdateZip.disabled = !(flowEnabled && hasAdb && hasDownloads && needsUpdate);
   els.btnPushUpdateZip.disabled = !(flowEnabled && hasAdb && needsUpdate && hasSelectedZip);
@@ -1009,6 +1189,10 @@ function refreshButtons() {
   els.btnUnlock.disabled = !(flowEnabled && hasFastboot && state.fastbootInfo?.unlocked === "no");
   els.btnFlash.disabled = !(flowEnabled && hasFastboot && hasFile && unlocked);
   els.btnRebootDevice.disabled = !(flowEnabled && hasFastboot);
+  const stage = computeUiStage();
+  els.btnAutoContinue.textContent = getAutoContinueLabel(stage);
+  const autoAllowed = flowEnabled && stage !== "unsupported" && stage !== "done";
+  els.btnAutoContinue.disabled = !autoAllowed || state.autoContinueRunning;
   renderStageFlow();
 }
 
@@ -1985,9 +2169,11 @@ function wireEvents() {
   els.preOemUnlock.addEventListener("change", (event) => setPreflightValue("oemUnlock", event.target.checked));
   els.preRsa.addEventListener("change", (event) => setPreflightValue("rsa", event.target.checked));
   els.btnPreflightReset.addEventListener("click", resetPreflightChecklist);
+  els.btnAutoContinue.addEventListener("click", handleAutoContinue);
   els.btnCheckUsb.addEventListener("click", handleCheckUsbMode);
   els.btnConnectAdb.addEventListener("click", handleConnectAdb);
   els.btnRebootBootloader.addEventListener("click", handleRebootToBootloader);
+  els.btnRebootBootloaderFastboot.addEventListener("click", handleRebootToBootloader);
   els.btnPickDownloads.addEventListener("click", handlePickDownloadsFolder);
   els.btnFindUpdateZip.addEventListener("click", handleFindUpdateZip);
   els.btnPushUpdateZip.addEventListener("click", handlePushUpdateZip);

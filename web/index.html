@@ -28,6 +28,8 @@
       <section class="panel stage-banner" id="panel-stage-banner">
         <h2 id="stage-title">שלב נוכחי: חיבור והכנת מכשיר</h2>
         <p id="stage-description">בצעו את צ'קליסט ההכנה ואז התחברו ב-ADB.</p>
+        <button id="btn-auto-continue" class="btn">המשך אוטומטי לשלב הבא</button>
+        <div id="auto-continue-status" class="status-line">פעולה אוטומטית עדיין לא הופעלה.</div>
       </section>
 
       <section class="panel" id="panel-preflight">
@@ -111,7 +113,8 @@
       <section class="grid two" id="panel-fastboot-flash-grid">
         <article class="panel" id="panel-fastboot">
           <h2>שלב 3: חיבור Fastboot</h2>
-          <p>לאחר שהמכשיר בבוטלואדר, התחברו מחדש במצב Fastboot.</p>
+          <p>אפשר להעביר אוטומטית ל-Fastboot בלחיצה, או לעבור ידנית ואז להתחבר.</p>
+          <button id="btn-reboot-bootloader-fastboot" class="btn btn-secondary" disabled>העבר עכשיו ל-Fastboot (ADB reboot bootloader)</button>
           <button id="btn-connect-fastboot" class="btn">חיבור Fastboot</button>
           <button id="btn-unlock" class="btn btn-danger" disabled>Bootloader Unlock (מוחק נתונים)</button>
           <div id="fastboot-status" class="status-line">לא מחובר ל-Fastboot.</div>
