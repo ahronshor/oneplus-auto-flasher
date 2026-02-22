@@ -351,6 +351,9 @@ body {
   margin: 0;
   max-height: 300px;
   overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   background: #101a1f;
   color: #cbf7ff;
   border-radius: 12px;
