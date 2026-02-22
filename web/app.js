@@ -63,6 +63,7 @@ const els = {
   btnPushUpdateZip: document.getElementById("btn-push-update-zip"),
   btnMarkUpdateInstalled: document.getElementById("btn-mark-update-installed"),
   btnConnectFastboot: document.getElementById("btn-connect-fastboot"),
+  btnRebootDeviceFastboot: document.getElementById("btn-reboot-device-fastboot"),
   btnUnlock: document.getElementById("btn-unlock"),
   btnFlashAuto: document.getElementById("btn-flash-auto"),
   btnFlash: document.getElementById("btn-flash"),
@@ -141,6 +142,7 @@ const state = {
     reason: ""
   },
   uiStage: "connect",
+  lastUsbMode: "unknown",
   autoContinueRunning: false,
   autoZipScanTimer: null,
   autoZipScanBusy: false,
@@ -228,6 +230,9 @@ function updateAutoContinueStatus(message, isError = false) {
 
 function getAutoContinueLabel(stage) {
   if (stage === "connect") {
+    if (state.lastUsbMode === "fastboot") {
+      return "התחבר אוטומטית ל-Fastboot";
+    }
     return state.adb ? "המשך לשלב הבא" : "התחבר אוטומטית ב-ADB";
   }
 
@@ -293,6 +298,16 @@ async function runAutoContinue() {
   }
 
   if (stage === "connect") {
+    if (state.lastUsbMode === "fastboot") {
+      await handleConnectFastboot();
+      if (state.fastboot) {
+        updateAutoContinueStatus("בוצע ניסיון חיבור Fastboot אוטומטי.");
+      } else {
+        updateAutoContinueStatus("זוהה Fastboot, אבל החיבור נכשל. נסו שוב בלחיצה על חיבור Fastboot.", true);
+      }
+      return;
+    }
+
     if (!state.adb) {
       await handleConnectAdb();
       updateAutoContinueStatus("בוצע ניסיון חיבור ADB אוטומטי.");
@@ -565,7 +580,12 @@ function renderProgressTracker() {
 }
 
 function setActiveSerial(serial) {
-  state.activeSerial = (serial || "").trim();
+  const next = (serial || "").trim();
+  const prev = state.activeSerial;
+  state.activeSerial = next;
+  if (next && prev && next !== prev) {
+    setDeviceSupportStatus(null, "", "");
+  }
   renderProgressTracker();
 }
 
@@ -592,7 +612,7 @@ function mergeRecordIntoDeviceInfo(serial) {
     return;
   }
 
-  if (!state.deviceInfo) {
+  if (!state.deviceInfo || (state.deviceInfo.serial && state.deviceInfo.serial !== serial)) {
     state.deviceInfo = {
       model: record.model || "",
       product: record.product || "",
@@ -651,25 +671,27 @@ function computeUiStage() {
   }
 
   const record = getCurrentRecord();
-  if (!record?.steps?.adbDetected) {
+  const steps = record?.steps || createEmptySteps();
+  const hasFastbootPath = Boolean(state.fastboot || state.fastbootInfo || state.lastUsbMode === "fastboot");
+  if (!steps.adbDetected && !hasFastbootPath) {
     return "connect";
   }
 
   if (isUpdateRequired()) {
-    if (!record.steps.updatePushed) {
+    if (!steps.updatePushed) {
       return "update";
     }
-    if (!record.steps.updateInstalled) {
+    if (!steps.updateInstalled) {
       return "install";
     }
   }
 
-  const unlocked = record.steps.bootloaderUnlocked || state.fastbootInfo?.unlocked === "yes";
+  const unlocked = steps.bootloaderUnlocked || state.fastbootInfo?.unlocked === "yes";
   if (!unlocked) {
     return "fastboot";
   }
 
-  if (!record.steps.flashed) {
+  if (!steps.flashed) {
     return "flash";
   }
 
@@ -1240,6 +1262,7 @@ function refreshButtons() {
   els.btnPushUpdateZip.disabled = !(flowEnabled && hasAdb && needsUpdate && hasSelectedZip);
   els.btnMarkUpdateInstalled.disabled = !(flowEnabled && needsUpdate);
   els.btnConnectFastboot.disabled = !flowEnabled;
+  els.btnRebootDeviceFastboot.disabled = !(flowEnabled && hasFastboot);
   els.btnUnlock.disabled = !(flowEnabled && hasFastboot && state.fastbootInfo?.unlocked === "no");
   els.btnFlashAuto.disabled = !(flowEnabled && hasFastboot && unlocked && autoFlashReady);
   els.btnFlash.disabled = !(flowEnabled && hasFastboot && hasFile && unlocked);
@@ -1509,18 +1532,48 @@ async function handleCheckUsbMode() {
   try {
     const usbDevice = await navigator.usb.requestDevice({ filters: USB_FILTERS });
     const mode = inferUsbModeFromInterfaces(usbDevice);
+    state.lastUsbMode = mode;
+    if (mode === "adb" || mode === "fastboot") {
+      setDeviceSupportStatus(null, "", "");
+    }
     let message = `נבחר: ${usbDevice.productName || "Unknown USB Device"}. `;
 
     if (mode === "adb") {
       message += "מצב זוהה: ADB";
     } else if (mode === "fastboot") {
       message += "מצב זוהה: Fastboot";
+      const serial = (usbDevice.serialNumber || "").trim();
+      if (serial) {
+        if (state.deviceInfo?.serial && state.deviceInfo.serial !== serial) {
+          state.deviceInfo = null;
+        }
+        setActiveSerial(serial);
+        mergeRecordIntoDeviceInfo(serial);
+        message += ` | סריאלי: ${serial}`;
+        if (state.deviceInfo) {
+          updateDevicePanel(state.deviceInfo);
+          recommendAction();
+        } else {
+          setActionMessage(
+            "זוהה Fastboot. לא נמצאה היסטוריה לסריאלי הזה, לכן מומלץ להתחבר קודם ב-ADB לזיהוי גרסה.",
+            "warning"
+          );
+          updateStatus(els.pushStatus, "אין גרסה שמורה לסריאלי הזה. כדי לוודא התאמה, התחברו ב-ADB לפחות פעם אחת.");
+        }
+      } else {
+        setActionMessage(
+          "זוהה Fastboot, אבל הסריאלי לא נקרא בבדיקת USB. לחצו 'חיבור Fastboot' כדי לזהות סריאלי.",
+          "warning"
+        );
+      }
+      updateStatus(els.fastbootStatus, "זוהה מצב Fastboot. לחצו 'חיבור Fastboot' או 'המשך אוטומטי'.");
     } else {
       message += "מצב לא זוהה אוטומטית. אפשר להמשיך עם כפתורי החיבור.";
     }
 
     updateStatus(els.usbStatus, message);
     appendLog(message);
+    refreshButtons();
   } catch (error) {
     if (error?.name === "NotFoundError") {
       updateStatus(els.usbStatus, "לא נבחר מכשיר.");
@@ -1582,6 +1635,7 @@ async function handleConnectAdb() {
     state.adbTransport = transport;
     state.adbUsbDevice = adbUsbDevice;
     state.adb = new Adb(transport);
+    state.lastUsbMode = "adb";
 
     const info = await readDeviceInfoFromAdb(state.adb, adbUsbDevice.serial || "");
     state.deviceInfo = info;
@@ -2012,24 +2066,34 @@ async function handleConnectFastboot() {
 
     state.fastboot = fastboot;
     state.fastbootInfo = await readFastbootInfo(fastboot);
-    if (state.fastbootInfo.serial) {
-      setActiveSerial(state.fastbootInfo.serial);
-      mergeRecordIntoDeviceInfo(state.fastbootInfo.serial);
+    state.lastUsbMode = "fastboot";
+    const fastbootSerial = (state.fastbootInfo.serial || "").trim();
+    if (fastbootSerial) {
+      setActiveSerial(fastbootSerial);
+      mergeRecordIntoDeviceInfo(fastbootSerial);
     }
 
-    if (!state.deviceInfo) {
-      state.deviceInfo = {
-        model: state.fastbootInfo.model || "",
-        product: state.fastbootInfo.product || "",
-        version: state.fastbootInfo.version || "",
-        serial: state.fastbootInfo.serial || ""
-      };
-    } else {
-      state.deviceInfo.model = state.deviceInfo.model || state.fastbootInfo.model || "";
-      state.deviceInfo.product = state.deviceInfo.product || state.fastbootInfo.product || "";
-      state.deviceInfo.version = state.deviceInfo.version || state.fastbootInfo.version || "";
-      state.deviceInfo.serial = state.deviceInfo.serial || state.fastbootInfo.serial || "";
-    }
+    const savedRecord = fastbootSerial ? state.deviceHistory[fastbootSerial] : null;
+    const previousInfo = state.deviceInfo;
+    const canReusePrevious = Boolean(previousInfo && (!fastbootSerial || previousInfo.serial === fastbootSerial));
+
+    state.deviceInfo = {
+      model: normalizeModel(
+        state.fastbootInfo.model
+          || (canReusePrevious ? previousInfo?.model : "")
+          || savedRecord?.model
+          || ""
+      ),
+      product: state.fastbootInfo.product
+        || (canReusePrevious ? previousInfo?.product : "")
+        || savedRecord?.product
+        || "",
+      version: state.fastbootInfo.version
+        || (canReusePrevious ? previousInfo?.version : "")
+        || savedRecord?.version
+        || "",
+      serial: fastbootSerial || (canReusePrevious ? previousInfo?.serial : "") || ""
+    };
 
     if (state.deviceInfo.serial) {
       updateDeviceRecord(state.deviceInfo.serial, (record) => {
@@ -2327,6 +2391,7 @@ function wireEvents() {
     startAutoUpdateZipWatch();
   });
   els.btnConnectFastboot.addEventListener("click", handleConnectFastboot);
+  els.btnRebootDeviceFastboot.addEventListener("click", handleRebootDevice);
   els.btnUnlock.addEventListener("click", handleUnlockBootloader);
   els.btnFlashAuto.addEventListener("click", handleAutoFlash);
   els.btnFlash.addEventListener("click", handleFlash);
