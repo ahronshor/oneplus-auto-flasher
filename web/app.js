@@ -324,12 +324,15 @@ async function runAutoContinue() {
     }
 
     if (!state.selectedUpdateZipHandle) {
+      await handleFindUpdateZip({ silent: true });
+    }
+
+    if (!state.selectedUpdateZipHandle) {
       if (els.btnDownloadUpdate?.href && els.btnDownloadUpdate.href !== "#") {
         window.open(els.btnDownloadUpdate.href, "_blank", "noopener,noreferrer");
         updateAutoContinueStatus("נפתחה הורדת קובץ העדכון. מתבצעת סריקה אוטומטית לתיקיית ההורדות.");
       }
       startAutoUpdateZipWatch();
-      await handleFindUpdateZip({ silent: true });
       if (!state.selectedUpdateZipHandle) {
         return;
       }
@@ -1689,19 +1692,69 @@ function getExpectedZipNames() {
     } catch (_) {}
   }
 
+  const imageFile = String(entry?.imageFile || "");
+  if (imageFile) {
+    const byImageBase = imageFile.match(/^(.+?)-0\.0\.4-\d+_(?:init_)?boot\.img$/i);
+    if (byImageBase?.[1]) {
+      set.add(`${byImageBase[1]}.zip`);
+      set.add(`${byImageBase[1]}(EX01).zip`);
+    }
+  }
+
   if (model && version) {
+    const modelLower = model.toLowerCase();
     const clean = version.replace(/\D/g, "");
     const head = clean.slice(0, 2);
     const tail = clean.slice(2);
-    set.add(`${model.toLowerCase()}_${head}_${tail}.zip`);
-    set.add(`${model.toLowerCase()}_${clean}.zip`);
-    set.add(`${model.toLowerCase()}_${tail}.zip`);
-    set.add(`${model.toLowerCase()}-${version}.zip`);
-    set.add(`${model.toLowerCase()}_${version}.zip`);
+    set.add(`${modelLower}_${head}_${tail}.zip`);
+    set.add(`${modelLower}_${clean}.zip`);
+    set.add(`${modelLower}_${tail}.zip`);
+    set.add(`${modelLower}-${version}.zip`);
+    set.add(`${modelLower}_${version}.zip`);
     set.add(`${model}-${version}.zip`);
+    set.add(`op_${modelLower}-${version}.zip`);
+    set.add(`op_${modelLower}-${version}(EX01).zip`);
+    set.add(`${modelLower}-${version}(EX01).zip`);
+    set.add(`${model}-${version}(EX01).zip`);
   }
 
   return Array.from(set).filter(Boolean);
+}
+
+function normalizeZipNameForLooseMatch(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isLikelyUpdateZipName(name) {
+  const entry = state.actionRecommendation?.entry;
+  const model = normalizeModel(state.deviceInfo?.model || entry?.model || "").toLowerCase();
+  const version = String(entry?.version || state.deviceInfo?.version || "").trim();
+  const lower = String(name || "").toLowerCase();
+
+  if (!lower.endsWith(".zip")) {
+    return false;
+  }
+
+  if (model && !lower.includes(model)) {
+    return false;
+  }
+
+  if (!version) {
+    return false;
+  }
+
+  const nameKey = normalizeZipNameForLooseMatch(name);
+  const versionKey = normalizeZipNameForLooseMatch(version);
+  const dotted = version.toLowerCase();
+  const underscored = dotted.replace(/\./g, "_");
+  const dashed = dotted.replace(/\./g, "-");
+
+  return (
+    lower.includes(dotted)
+    || lower.includes(underscored)
+    || lower.includes(dashed)
+    || (versionKey && nameKey.includes(versionKey))
+  );
 }
 
 async function ensureReadPermission(dirHandle) {
@@ -1796,7 +1849,7 @@ async function handleFindUpdateZip(options = {}) {
       if (!name.toLowerCase().endsWith(".zip")) {
         continue;
       }
-      if (expectedLower.has(name.toLowerCase())) {
+      if (expectedLower.has(name.toLowerCase()) || isLikelyUpdateZipName(name)) {
         foundHandle = handle;
         foundName = name;
         break;
