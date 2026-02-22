@@ -64,6 +64,7 @@ const els = {
   btnMarkUpdateInstalled: document.getElementById("btn-mark-update-installed"),
   btnConnectFastboot: document.getElementById("btn-connect-fastboot"),
   btnUnlock: document.getElementById("btn-unlock"),
+  btnFlashAuto: document.getElementById("btn-flash-auto"),
   btnFlash: document.getElementById("btn-flash"),
   btnRebootDevice: document.getElementById("btn-reboot-device"),
   btnClearLog: document.getElementById("btn-clear-log"),
@@ -248,14 +249,23 @@ function getAutoContinueLabel(stage) {
     if (state.fastboot && state.fastbootInfo?.unlocked === "no") {
       return "פתח Bootloader";
     }
-    return "מעבר וחיבור ל-Fastboot";
+    if (state.adb && !state.fastboot) {
+      return "העבר ל-Fastboot והתחבר";
+    }
+    return "חיבור Fastboot";
   }
 
   if (stage === "flash") {
+    if (!state.fastboot) {
+      if (state.adb) {
+        return "מעבר ל-Fastboot וצריבה אוטומטית";
+      }
+      return "חיבור Fastboot ואז צריבה";
+    }
     if (state.fastbootInfo?.unlocked !== "yes") {
       return "פתח Bootloader לפני צריבה";
     }
-    return "צרוב עכשיו";
+    return getRecommendedFlashEntry() ? "צרוב אוטומטית מהמאגר" : "צרוב עכשיו";
   }
 
   if (stage === "done") {
@@ -348,6 +358,11 @@ async function runAutoContinue() {
 
   if (stage === "flash") {
     if (!state.fastboot) {
+      if (state.adb) {
+        await handleRebootToBootloader();
+        updateAutoContinueStatus("נשלחה פקודת מעבר ל-Fastboot. מנסה להתחבר...");
+        await sleep(1800);
+      }
       await handleConnectFastboot();
       if (!state.fastboot) {
         updateAutoContinueStatus("צריך חיבור Fastboot לפני צריבה.", true);
@@ -361,8 +376,14 @@ async function runAutoContinue() {
       return;
     }
 
+    if (getRecommendedFlashEntry()) {
+      await handleAutoFlash();
+      updateAutoContinueStatus("בוצע ניסיון צריבה אוטומטית מהמאגר.");
+      return;
+    }
+
     if (!els.flashFile.files?.[0]) {
-      updateAutoContinueStatus("כדי לבצע צריבה אוטומטית צריך קודם לבחור קובץ IMG.", true);
+      updateAutoContinueStatus("לא נמצא קובץ אוטומטי תואם. אפשר לבחור קובץ IMG ידנית ואז לנסות שוב.", true);
       return;
     }
 
@@ -893,6 +914,37 @@ function buildCloudUpdateUrl(model, version) {
   return `${CLOUD_BASE_URL}/${model.toLowerCase()}_${head}_${tail}.zip`;
 }
 
+function getRecommendedFlashEntry() {
+  if (state.actionRecommendation?.type === "flash-ready" && state.actionRecommendation.entry) {
+    return state.actionRecommendation.entry;
+  }
+  return null;
+}
+
+function detectFlashPartition(fileName) {
+  const lower = String(fileName || "").toLowerCase();
+  if (lower.includes("init_boot")) {
+    return "init_boot";
+  }
+  if (lower.includes("_boot.img") || lower.endsWith("boot.img")) {
+    return "boot";
+  }
+  return "init_boot";
+}
+
+function resolveImageDownloadUrl(entry) {
+  const imageFile = entry?.imageFile || "";
+  if (imageFile) {
+    return new URL(`images/${imageFile}`, window.location.href).toString();
+  }
+
+  if (entry?.imageUrl) {
+    return new URL(entry.imageUrl, window.location.href).toString();
+  }
+
+  return "";
+}
+
 function compareVersion(a, b) {
   const left = String(a).split(".").map((x) => Number.parseInt(x, 10) || 0);
   const right = String(b).split(".").map((x) => Number.parseInt(x, 10) || 0);
@@ -1141,6 +1193,7 @@ function recommendAction() {
       `המכשיר על גרסה ${version}. נמצא init_boot תואם (${exact.imageFile}). אפשר לעבור ל-Fastboot ולצרוב.`,
       "success"
     );
+    updateStatus(els.flashStatus, `קובץ מומלץ מוכן לצריבה אוטומטית: ${exact.imageFile}`);
     updateStatus(els.pushStatus, "אין צורך ב-ADB push לגרסה הזו.");
     renderProgressTracker();
     refreshButtons();
@@ -1175,6 +1228,7 @@ function refreshButtons() {
   const hasFile = Boolean(els.flashFile.files && els.flashFile.files.length > 0);
   const unlocked = state.fastbootInfo?.unlocked === "yes";
   const needsUpdate = state.actionRecommendation?.type === "update-required";
+  const autoFlashReady = state.actionRecommendation?.type === "flash-ready";
   const hasDownloads = Boolean(state.downloadsDirHandle);
   const hasSelectedZip = Boolean(state.selectedUpdateZipHandle);
   const flowEnabled = state.deviceSupport.supported !== false;
@@ -1187,6 +1241,7 @@ function refreshButtons() {
   els.btnMarkUpdateInstalled.disabled = !(flowEnabled && needsUpdate);
   els.btnConnectFastboot.disabled = !flowEnabled;
   els.btnUnlock.disabled = !(flowEnabled && hasFastboot && state.fastbootInfo?.unlocked === "no");
+  els.btnFlashAuto.disabled = !(flowEnabled && hasFastboot && unlocked && autoFlashReady);
   els.btnFlash.disabled = !(flowEnabled && hasFastboot && hasFile && unlocked);
   els.btnRebootDevice.disabled = !(flowEnabled && hasFastboot);
   const stage = computeUiStage();
@@ -2080,15 +2135,56 @@ function extractProgressPercent(value) {
   return 0;
 }
 
-async function handleFlash() {
+async function downloadImageBlobWithProgress(url, onProgress) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`הורדת קובץ נכשלה (${response.status})`);
+  }
+
+  const total = Number.parseInt(response.headers.get("content-length") || "0", 10) || 0;
+  if (!response.body || typeof response.body.getReader !== "function") {
+    const blob = await response.blob();
+    if (onProgress) {
+      onProgress(1, 1);
+    }
+    return blob;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let loaded = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (!value) {
+      continue;
+    }
+    chunks.push(value);
+    loaded += value.byteLength || value.length || 0;
+    if (onProgress && total > 0) {
+      onProgress(loaded, total);
+    }
+  }
+
+  if (onProgress && total <= 0) {
+    onProgress(1, 1);
+  }
+
+  return new Blob(chunks, { type: "application/octet-stream" });
+}
+
+async function performFlash(blobOrFile, sourceName, partition) {
   if (!state.fastboot) {
     updateStatus(els.flashStatus, "יש להתחבר קודם ב-Fastboot.", true);
-    return;
+    return false;
   }
 
   if (state.fastbootInfo?.unlocked !== "yes") {
     updateStatus(els.flashStatus, "ה-Bootloader נעול. יש לבצע unlock לפני צריבה.", true);
-    return;
+    return false;
   }
 
   const serial = getCurrentSerial();
@@ -2100,22 +2196,16 @@ async function handleFlash() {
       "לפני צריבה צריך להשלים עדכון גרסה וללחוץ 'סיימתי להתקין עדכון במכשיר'.",
       true
     );
-    return;
+    return false;
   }
 
-  const file = els.flashFile.files?.[0];
-  if (!file) {
-    updateStatus(els.flashStatus, "יש לבחור קובץ IMG לפני צריבה.", true);
-    return;
-  }
-
-  updateStatus(els.flashStatus, `מתחיל צריבה: ${file.name}`);
-  appendLog(`Starting flash init_boot from file ${file.name}`);
+  updateStatus(els.flashStatus, `מתחיל צריבה למחיצת ${partition}: ${sourceName}`);
+  appendLog(`Starting flash ${partition} from ${sourceName}`);
   showProgress(true);
   setProgress(0);
 
   try {
-    await state.fastboot.flashBlob("init_boot", file, (progressInfo) => {
+    await state.fastboot.flashBlob(partition, blobOrFile, (progressInfo) => {
       setProgress(extractProgressPercent(progressInfo));
     });
 
@@ -2129,10 +2219,60 @@ async function handleFlash() {
       });
     }
     refreshButtons();
+    return true;
   } catch (error) {
     updateStatus(els.flashStatus, `צריבה נכשלה: ${error.message}`, true);
     appendLog(`Flash failed: ${error.message}`, "ERROR");
+    return false;
   }
+}
+
+async function handleAutoFlash() {
+  const entry = getRecommendedFlashEntry();
+  if (!entry) {
+    updateStatus(
+      els.flashStatus,
+      "לא נמצא קובץ צריבה אוטומטי תואם לגרסה הנוכחית. אפשר להשתמש באפשרות ידנית.",
+      true
+    );
+    return;
+  }
+
+  const url = resolveImageDownloadUrl(entry);
+  if (!url) {
+    updateStatus(els.flashStatus, "כתובת קובץ הצריבה לא תקינה.", true);
+    return;
+  }
+
+  const partition = detectFlashPartition(entry.imageFile);
+  updateStatus(els.flashStatus, `מוריד קובץ צריבה מומלץ: ${entry.imageFile}`);
+  appendLog(`Downloading recommended image: ${entry.imageFile} (${url})`);
+  showProgress(true);
+  setProgress(0);
+
+  try {
+    const blob = await downloadImageBlobWithProgress(url, (loaded, total) => {
+      if (total > 0) {
+        setProgress(Math.round((loaded / total) * 35));
+      }
+    });
+    setProgress(40);
+    await performFlash(blob, entry.imageFile, partition);
+  } catch (error) {
+    updateStatus(els.flashStatus, `הורדת קובץ אוטומטי נכשלה: ${error.message}`, true);
+    appendLog(`Auto image download failed: ${error.message}`, "ERROR");
+  }
+}
+
+async function handleFlash() {
+  const file = els.flashFile.files?.[0];
+  if (!file) {
+    updateStatus(els.flashStatus, "יש לבחור קובץ IMG לפני צריבה ידנית.", true);
+    return;
+  }
+
+  const partition = detectFlashPartition(file.name);
+  await performFlash(file, file.name, partition);
 }
 
 async function handleRebootDevice() {
@@ -2188,6 +2328,7 @@ function wireEvents() {
   });
   els.btnConnectFastboot.addEventListener("click", handleConnectFastboot);
   els.btnUnlock.addEventListener("click", handleUnlockBootloader);
+  els.btnFlashAuto.addEventListener("click", handleAutoFlash);
   els.btnFlash.addEventListener("click", handleFlash);
   els.btnRebootDevice.addEventListener("click", handleRebootDevice);
   els.flashFile.addEventListener("change", handleFileSelection);

@@ -235,6 +235,20 @@ body {
   width: 100%;
 }
 
+.advanced-box {
+  margin: 0.5rem 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 10px;
+  border: 1px dashed #c7d8de;
+  background: #f7fbfd;
+}
+
+.advanced-box summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #1f4a55;
+}
+
 .progress-wrap {
   height: 11px;
   width: 100%;

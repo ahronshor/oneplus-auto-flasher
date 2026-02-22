@@ -122,12 +122,16 @@
 
         <article class="panel" id="panel-flash">
           <h2>שלב 4: צריבת init_boot</h2>
-          <p>בחרו קובץ וצרבו. ניתן לבחור קובץ מהמחשב או להשתמש בקובץ מומלץ.</p>
-          <label class="file-picker">
-            <span>בחר קובץ IMG</span>
-            <input id="flash-file" type="file" accept=".img" />
-          </label>
-          <button id="btn-flash" class="btn" disabled>צרוב init_boot</button>
+          <p>ברירת מחדל: צריבה אוטומטית מהקובץ המתאים מתוך מאגר `images` באתר.</p>
+          <button id="btn-flash-auto" class="btn" disabled>צרוב אוטומטית מהמאגר</button>
+          <details class="advanced-box">
+            <summary>אפשרות מתקדמת: בחירת קובץ ידנית</summary>
+            <label class="file-picker">
+              <span>בחר קובץ IMG</span>
+              <input id="flash-file" type="file" accept=".img" />
+            </label>
+            <button id="btn-flash" class="btn btn-secondary" disabled>צריבה ידנית</button>
+          </details>
           <button id="btn-reboot-device" class="btn btn-secondary" disabled>הפעל מחדש את המכשיר</button>
           <div class="progress-wrap hidden" id="flash-progress-wrap">
             <div id="flash-progress-bar"></div>
