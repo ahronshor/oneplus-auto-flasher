@@ -2,6 +2,7 @@
   "generatedAt": "2026-02-20",
   "images": [
     {
+      "family": "oneplus",
       "model": "CPH2724",
       "version": "16.0.3.503",
       "imageFile": "op15_cph2724-EX01_1603503-0.0.4-93_init_boot.img",
@@ -9,6 +10,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/cph2724_16_03503.zip"
     },
     {
+      "family": "oneplus",
       "model": "CPH2769",
       "version": "16.0.3.503",
       "imageFile": "op15r_cph2769-EX01_1603503-0.0.4-93_init_boot.img",
@@ -16,6 +18,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/cph2769_16_03503.zip"
     },
     {
+      "family": "oneplus",
       "model": "CPH2605",
       "version": "15.0.0.1601",
       "imageFile": "op_cph2605-15.0.0.1601-0.0.4-93_boot.img",
@@ -23,6 +26,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/op_cph2605-15.0.0.1601%28EX01%29.zip"
     },
     {
+      "family": "oneplus",
       "model": "CPH2645",
       "version": "16.0.3.500",
       "imageFile": "op_cph2645-CPH2645_16.0.3.500-0.0.4-93_init_boot.img",
@@ -30,6 +34,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/cph2645_16_03500.zip"
     },
     {
+      "family": "oneplus",
       "model": "CPH2663",
       "version": "16.0.2.401",
       "imageFile": "op_cph2663-EX01_1602401-0.0.4-93_init_boot.img",
@@ -37,6 +42,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/cph2663_16_02401.zip"
     },
     {
+      "family": "oneplus",
       "model": "CPH2709",
       "version": "16.0.1.300",
       "imageFile": "op_cph2709-EX01_1601300-0.0.4-93_init_boot.img",
@@ -44,6 +50,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/cph2709_16_01300.zip"
     },
     {
+      "family": "oneplus",
       "model": "CPH2719",
       "version": "16.0.1.300",
       "imageFile": "op_cph2719-EX01_1601300-0.0.4-93_init_boot.img",
@@ -51,6 +58,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/cph2719_16_01300.zip"
     },
     {
+      "family": "oneplus",
       "model": "OPD2415",
       "version": "16.0.3.500",
       "imageFile": "op_opd2415-OPD2415_16_03500-0.0.4-93_init_boot.img",
@@ -58,6 +66,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/opd2415_16_03500.zip"
     },
     {
+      "family": "oneplus",
       "model": "OPD2481",
       "version": "15.0.1.1101",
       "imageFile": "op_opd2481-OPD2481_15.0.1.1101-0.0.4-93_boot.img",
@@ -65,6 +74,7 @@
       "updateUrl": "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op/opd2481_15_011101.zip"
     },
     {
+      "family": "oneplus",
       "model": "OPD2505",
       "version": "16.0.2.412",
       "imageFile": "op_opd2505-OPD2505_16.0.2.412-0.0.4-93_init_boot.img",

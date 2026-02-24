@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>הוראות עדכון ידני</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="hero">
+        <p class="kicker">Android Web Flasher</p>
+        <h1>הוראות עדכון ידני (Local Install)</h1>
+        <p class="hero-subtitle">
+          מיועד למסלול עדכון ביניים ידני (OnePlus). בצעו את השלבים ואז חזרו לכלי ולחצו "בדוק שוב גרסה ב-ADB".
+        </p>
+      </header>
+
+      <section class="panel">
+        <h2>שלב 1: הורדת קובץ ה-ZIP</h2>
+        <ol class="instructions">
+          <li>הורידו למחשב את קובץ ה-ZIP מהקישור שקיבלתם בכלי.</li>
+          <li>אל תחלצו את קובץ ה-ZIP.</li>
+          <li>ודאו ששם הקובץ נשאר מלא (כולל סיומת `.zip`).</li>
+        </ol>
+      </section>
+
+      <section class="panel">
+        <h2>שלב 2: העתקה לטלפון</h2>
+        <ol class="instructions">
+          <li>חברו את המכשיר למחשב בכבל USB.</li>
+          <li>העבירו את קובץ ה-ZIP לאחסון הפנימי של המכשיר (תיקייה ראשית או Download).</li>
+          <li>נתקו את הכבל רק אחרי שההעתקה הסתיימה.</li>
+        </ol>
+      </section>
+
+      <section class="panel">
+        <h2>שלב 3: התקנה מקומית</h2>
+        <ol class="instructions">
+          <li>פתחו בטלפון: `Settings` -> `About device`.</li>
+          <li>היכנסו ל-`Version`.</li>
+          <li>לחצו על תפריט שלוש נקודות ובחרו `Local install`.</li>
+          <li>בחרו את קובץ ה-ZIP ואשרו התקנה.</li>
+          <li>המתינו לסיום מלא של העדכון והפעלה מחדש אם נדרש.</li>
+        </ol>
+      </section>
+
+      <section class="panel">
+        <h2>שלב 4: חזרה לכלי</h2>
+        <p>
+          חזרו לעמוד הראשי של הכלי ולחצו על הכפתור <strong>"בדוק שוב גרסה ב-ADB"</strong>.
+          רק אם הגרסה תואמת לקובץ הצריבה, התהליך ימשיך לשלב Fastboot.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

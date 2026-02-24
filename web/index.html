@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OnePlus Web Flasher</title>
+    <title>Android Web Flasher</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet" />
@@ -15,9 +15,9 @@
     <main class="layout">
       <header class="hero">
         <p class="kicker">כלי צריבה ללקוחות קצה</p>
-        <h1>OnePlus Web Flasher</h1>
+        <h1>Android Web Flasher</h1>
         <p class="hero-subtitle">
-          מחברים מכשיר, מזהים דגם וגרסה, ומקבלים הוראות ברורות אם צריך עדכון או שאפשר לצרוב מיד.
+          תומך ב-OnePlus, Xiaomi ו-Pixel: מזהים דגם/גרסה ומקבלים זרימה מדויקת לצריבה בטוחה.
         </p>
         <div class="hero-warning">
           <strong>חשוב:</strong>
@@ -78,23 +78,29 @@
           חברו מכשיר ב-ADB כדי לקבל הנחיה אוטומטית.
         </div>
         <a id="update-link" class="btn-link hidden" href="#" target="_blank" rel="noopener noreferrer">הורדת קובץ עדכון מומלץ</a>
+        <a id="support-link" class="btn-link hidden" href="#" target="_blank" rel="noopener noreferrer">לקבוצת הצריבות בוואטסאפ</a>
       </section>
 
       <section class="panel" id="panel-update">
-        <h2>שלב 2.5: עדכון גרסה (ADB Push)</h2>
-        <p>בשלב זה בודקים אם קובץ ה-ZIP כבר ירד. אם כן דוחפים למכשיר, ואם לא מורידים ואז דוחפים.</p>
+        <h2>שלב 2: עדכון גרסה ידני (OnePlus בלבד)</h2>
+        <p>העדכון מתבצע ידנית במכשיר. הורידו את ה-ZIP המתאים, העתיקו אותו לטלפון, והתקינו דרך Local install.</p>
         <a id="btn-download-update" class="btn-link hidden" href="#" target="_blank" rel="noopener noreferrer">הורד ZIP עדכון</a>
+        <a id="btn-open-update-guide" class="btn-link" href="./update-guide.html" target="_blank" rel="noopener noreferrer">פתח הוראות עדכון (צעד-אחר-צעד)</a>
+        <button id="btn-recheck-update" class="btn">בדוק שוב גרסה ב-ADB</button>
+        <div id="downloads-status" class="status-line">גרסת יעד תוצג כאן לאחר זיהוי המכשיר.</div>
+        <div id="push-status" class="status-line">אחרי ההתקנה במכשיר: לחצו 'בדוק שוב גרסה ב-ADB'.</div>
+        <div id="post-push-guide" class="status-line">
+          במכשיר: Settings -> About device -> Version -> שלוש נקודות -> Local install.
+        </div>
+
+        <div class="hidden" aria-hidden="true">
         <button id="btn-pick-downloads" class="btn btn-secondary">בחר תיקיית הורדות</button>
         <button id="btn-find-update-zip" class="btn btn-secondary" disabled>חפש ZIP עדכון בתיקייה</button>
         <button id="btn-push-update-zip" class="btn" disabled>דחוף ZIP למכשיר (ADB push)</button>
         <button id="btn-mark-update-installed" class="btn btn-secondary" disabled>סיימתי להתקין עדכון במכשיר</button>
-        <div id="downloads-status" class="status-line">תיקיית הורדות עדיין לא נבחרה.</div>
-        <div id="push-status" class="status-line">טרם בוצע ADB push.</div>
-        <div id="post-push-guide" class="status-line">
-          אחרי ה-push: במכשיר להיכנס ל-Settings -> About device -> Version -> Local install ולבצע התקנה.
-        </div>
         <div class="progress-wrap hidden" id="push-progress-wrap">
           <div id="push-progress-bar"></div>
+        </div>
         </div>
       </section>
 
@@ -103,8 +109,8 @@
         <div class="kv-row"><span>סריאלי פעיל:</span><strong id="progress-serial">-</strong></div>
         <ol class="step-list">
           <li id="step-adb" class="step-item pending">1. זיהוי ADB ודגם/גרסה</li>
-          <li id="step-update-pushed" class="step-item pending">2. קובץ עדכון הועבר למכשיר</li>
-          <li id="step-update-installed" class="step-item pending">3. המשתמש התקין עדכון במכשיר</li>
+          <li id="step-update-pushed" class="step-item pending">2. הורדת קובץ עדכון לגרסה הנדרשת</li>
+          <li id="step-update-installed" class="step-item pending">3. עדכון מקומי הושלם במכשיר</li>
           <li id="step-bootloader-unlocked" class="step-item pending">4. Bootloader נפתח ואושרה פעולה (Volume +)</li>
           <li id="step-flashed" class="step-item pending">5. צריבת init_boot הסתיימה</li>
         </ol>
@@ -123,7 +129,7 @@
 
         <article class="panel" id="panel-flash">
           <h2>שלב 4: צריבת init_boot</h2>
-          <p>ברירת מחדל: צריבה אוטומטית מהקובץ המתאים מתוך מאגר `images` באתר.</p>
+          <p>ברירת מחדל: צריבה אוטומטית מהקישור התואם שמוחזר מה-API.</p>
           <button id="btn-flash-auto" class="btn" disabled>צרוב אוטומטית מהמאגר</button>
           <details class="advanced-box">
             <summary>אפשרות מתקדמת: בחירת קובץ ידנית</summary>
@@ -147,7 +153,7 @@
           <li>להפעיל Developer Options, USB Debugging ו-OEM Unlocking.</li>
           <li>לחבר כבל USB איכותי ולאשר את חלון האמון (RSA) במכשיר.</li>
           <li>להתחבר קודם ב-ADB לזיהוי דגם/גרסה, ואז לבצע עדכון גרסה אם נדרש.</li>
-          <li>אחרי ה-push, להתקין את העדכון במכשיר ולחזור לאתר ללחיצה על "סיימתי להתקין עדכון במכשיר".</li>
+          <li>ב-OnePlus בלבד: אם נדרש עדכון ביניים, להוריד ZIP, להתקין ידנית דרך Local install, ואז לחזור לאתר ללחיצה על "בדוק שוב גרסה ב-ADB".</li>
           <li>בפתיחת Bootloader: לאשר במכשיר עם Volume Plus.</li>
           <li>מיד לאחר האישור: לחיצה ארוכה על Power + Volume Minus כדי לחזור ל-Fastboot ולצרוב מיד.</li>
           <li>בזמן צריבה לא לנתק את הכבל ולא לסגור את חלון הדפדפן.</li>

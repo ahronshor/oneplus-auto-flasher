@@ -1,6 +1,8 @@
-const CLOUD_BASE_URL = "https://lomdaat-roms2.ams3.cdn.digitaloceanspaces.com/op";
-const DEVICE_HISTORY_KEY = "oneplus_web_flasher_device_history_v1";
-const PREFLIGHT_KEY = "oneplus_web_flasher_preflight_v1";
+const UPDATE_GUIDE_URL = "./update-guide.html";
+const SUPPORT_WHATSAPP_URL = "";
+const ROM_BOOT_API_URL = "https://admin-prod.koshersvr.com/api/rom_boot_link";
+const DEVICE_HISTORY_KEY = "android_web_flasher_device_history_v1";
+const PREFLIGHT_KEY = "android_web_flasher_preflight_v1";
 const UPDATE_ZIP_SCAN_INTERVAL_MS = 4000;
 const TRACKED_STEP_KEYS = [
   "adbDetected",
@@ -16,19 +18,6 @@ const USB_FILTERS = [
   { vendorId: 0x2a70 },
   { vendorId: 0x22d9 },
   { vendorId: 0x18d1 }
-];
-
-const BUILTIN_IMAGE_FILES = [
-  "op15_cph2724-EX01_1603503-0.0.4-93_init_boot.img",
-  "op15r_cph2769-EX01_1603503-0.0.4-93_init_boot.img",
-  "op_cph2605-15.0.0.1601-0.0.4-93_boot.img",
-  "op_cph2645-CPH2645_16.0.3.500-0.0.4-93_init_boot.img",
-  "op_cph2663-EX01_1602401-0.0.4-93_init_boot.img",
-  "op_cph2709-EX01_1601300-0.0.4-93_init_boot.img",
-  "op_cph2719-EX01_1601300-0.0.4-93_init_boot.img",
-  "op_opd2415-OPD2415_16_03500-0.0.4-93_init_boot.img",
-  "op_opd2481-OPD2481_15.0.1.1101-0.0.4-93_boot.img",
-  "op_opd2505-OPD2505_16.0.2.412-0.0.4-93_init_boot.img"
 ];
 
 const MODULE_CANDIDATES = {
@@ -58,6 +47,8 @@ const els = {
   btnRebootBootloader: document.getElementById("btn-reboot-bootloader"),
   btnRebootBootloaderFastboot: document.getElementById("btn-reboot-bootloader-fastboot"),
   btnDownloadUpdate: document.getElementById("btn-download-update"),
+  btnOpenUpdateGuide: document.getElementById("btn-open-update-guide"),
+  btnRecheckUpdate: document.getElementById("btn-recheck-update"),
   btnPickDownloads: document.getElementById("btn-pick-downloads"),
   btnFindUpdateZip: document.getElementById("btn-find-update-zip"),
   btnPushUpdateZip: document.getElementById("btn-push-update-zip"),
@@ -83,6 +74,7 @@ const els = {
   serial: document.getElementById("device-serial"),
   action: document.getElementById("recommended-action"),
   updateLink: document.getElementById("update-link"),
+  supportLink: document.getElementById("support-link"),
   stageTitle: document.getElementById("stage-title"),
   stageDescription: document.getElementById("stage-description"),
   autoContinueStatus: document.getElementById("auto-continue-status"),
@@ -121,7 +113,6 @@ const state = {
   fastboot: null,
   fastbootInfo: null,
   deviceInfo: null,
-  manifest: null,
   deviceMap: new Map(),
   actionRecommendation: null,
   downloadsDirHandle: null,
@@ -143,6 +134,7 @@ const state = {
   },
   uiStage: "connect",
   lastUsbMode: "unknown",
+  recommendationRequestId: 0,
   autoContinueRunning: false,
   autoZipScanTimer: null,
   autoZipScanBusy: false,
@@ -237,17 +229,7 @@ function getAutoContinueLabel(stage) {
   }
 
   if (stage === "update") {
-    if (state.selectedUpdateZipHandle) {
-      return "דחוף ZIP למכשיר";
-    }
-    if (state.downloadsDirHandle) {
-      return "חפש ZIP בתיקייה";
-    }
-    return "הורד והכן ZIP עדכון";
-  }
-
-  if (stage === "install") {
-    return "סימנתי שהעדכון הותקן";
+    return "פתח הורדה והוראות עדכון";
   }
 
   if (stage === "fastboot") {
@@ -278,7 +260,7 @@ function getAutoContinueLabel(stage) {
   }
 
   if (stage === "unsupported") {
-    return "מכשיר לא נתמך";
+    return "לא ניתן להמשיך";
   }
 
   return "המשך אוטומטי";
@@ -288,7 +270,7 @@ async function runAutoContinue() {
   const stage = computeUiStage();
 
   if (stage === "unsupported") {
-    updateAutoContinueStatus("המכשיר לא נתמך ולכן לא ניתן להריץ המשך אוטומטי.", true);
+    updateAutoContinueStatus(state.deviceSupport.reason || "הגרסה/המכשיר לא נתמכים כרגע ולכן אי אפשר להמשיך אוטומטית.", true);
     return;
   }
 
@@ -319,33 +301,13 @@ async function runAutoContinue() {
   }
 
   if (stage === "update") {
-    if (!state.downloadsDirHandle) {
-      await handlePickDownloadsFolder();
+    if (els.btnDownloadUpdate?.href && els.btnDownloadUpdate.href !== "#") {
+      window.open(els.btnDownloadUpdate.href, "_blank", "noopener,noreferrer");
     }
-
-    if (!state.selectedUpdateZipHandle) {
-      await handleFindUpdateZip({ silent: true });
+    if (els.btnOpenUpdateGuide?.href) {
+      window.open(els.btnOpenUpdateGuide.href, "_blank", "noopener,noreferrer");
     }
-
-    if (!state.selectedUpdateZipHandle) {
-      if (els.btnDownloadUpdate?.href && els.btnDownloadUpdate.href !== "#") {
-        window.open(els.btnDownloadUpdate.href, "_blank", "noopener,noreferrer");
-        updateAutoContinueStatus("נפתחה הורדת קובץ העדכון. מתבצעת סריקה אוטומטית לתיקיית ההורדות.");
-      }
-      startAutoUpdateZipWatch();
-      if (!state.selectedUpdateZipHandle) {
-        return;
-      }
-    }
-
-    await handlePushUpdateZip();
-    updateAutoContinueStatus("בוצע ניסיון ADB push אוטומטי.");
-    return;
-  }
-
-  if (stage === "install") {
-    handleMarkUpdateInstalled();
-    updateAutoContinueStatus("סומן שהעדכון הותקן. ממשיך לשלב Fastboot.");
+    updateAutoContinueStatus("נפתחו קישור הורדה והוראות. לאחר עדכון ידני במכשיר לחצו 'בדוק שוב גרסה ב-ADB'.");
     return;
   }
 
@@ -454,6 +416,7 @@ function normalizeStoredRecord(record = {}) {
   return {
     serial: record.serial || "",
     model: normalizeModel(record.model || ""),
+    brand: normalizeBrand(record.brand || ""),
     product: (record.product || "").trim(),
     version: (record.version || "").trim(),
     steps,
@@ -618,12 +581,14 @@ function mergeRecordIntoDeviceInfo(serial) {
   if (!state.deviceInfo || (state.deviceInfo.serial && state.deviceInfo.serial !== serial)) {
     state.deviceInfo = {
       model: record.model || "",
+      brand: record.brand || "",
       product: record.product || "",
       version: record.version || "",
       serial
     };
   } else {
     state.deviceInfo.model = state.deviceInfo.model || record.model || "";
+    state.deviceInfo.brand = state.deviceInfo.brand || record.brand || "";
     state.deviceInfo.product = state.deviceInfo.product || record.product || "";
     state.deviceInfo.version = state.deviceInfo.version || record.version || "";
     state.deviceInfo.serial = state.deviceInfo.serial || serial;
@@ -639,17 +604,6 @@ function setSectionVisible(element, visible) {
 
 function isUpdateRequired() {
   return state.actionRecommendation?.type === "update-required";
-}
-
-function getSupportedModels() {
-  const models = new Set();
-  for (const entry of state.manifest?.images || []) {
-    const model = normalizeModel(entry.model);
-    if (model) {
-      models.add(model);
-    }
-  }
-  return Array.from(models).sort();
 }
 
 function setDeviceSupportStatus(supported, model = "", reason = "") {
@@ -681,12 +635,7 @@ function computeUiStage() {
   }
 
   if (isUpdateRequired()) {
-    if (!steps.updatePushed) {
-      return "update";
-    }
-    if (!steps.updateInstalled) {
-      return "install";
-    }
+    return "update";
   }
 
   const unlocked = steps.bootloaderUnlocked || state.fastbootInfo?.unlocked === "yes";
@@ -713,11 +662,7 @@ function renderStageFlow() {
     },
     update: {
       title: "שלב נוכחי: עדכון גרסה",
-      description: "בדקו אם ZIP כבר קיים בתיקיית ההורדות. אם לא, הורידו אותו ואז בצעו ADB push."
-    },
-    install: {
-      title: "שלב נוכחי: התקנת עדכון במכשיר",
-      description: "במכשיר: Local install. לאחר סיום חזרו לאתר ולחצו 'סיימתי להתקין עדכון במכשיר'."
+      description: "מסלול זה פעיל ל-OnePlus בלבד: הורידו ZIP, התקינו דרך Local install, ואז בדקו שוב גרסה ב-ADB."
     },
     fastboot: {
       title: "שלב נוכחי: מעבר ל-Fastboot ופתיחת Bootloader",
@@ -732,8 +677,8 @@ function renderStageFlow() {
       description: "הצריבה סומנה כהצלחה למכשיר הנוכחי. ניתן לנתק או להתחיל מכשיר נוסף."
     },
     unsupported: {
-      title: "המכשיר לא נתמך בכלי הזה",
-      description: state.deviceSupport.reason || "המכשיר שזוהה לא מופיע ברשימת הדגמים הנתמכים."
+      title: "לא ניתן להמשיך כרגע",
+      description: state.deviceSupport.reason || "המכשיר או הגרסה שזוהו לא נתמכים כרגע."
     }
   };
 
@@ -742,8 +687,8 @@ function renderStageFlow() {
 
   setSectionVisible(els.panelPreflight, stage === "connect");
   setSectionVisible(els.panelConnectGrid, stage === "connect" || stage === "unsupported");
-  setSectionVisible(els.panelAction, stage === "connect" || stage === "update" || stage === "install" || stage === "unsupported");
-  setSectionVisible(els.panelUpdate, stage === "update" || stage === "install");
+  setSectionVisible(els.panelAction, stage === "connect" || stage === "update" || stage === "unsupported");
+  setSectionVisible(els.panelUpdate, stage === "update");
   setSectionVisible(els.panelDeviceDetails, hasDeviceInfo);
   setSectionVisible(els.panelProgress, stage !== "connect" && stage !== "unsupported");
   setSectionVisible(els.panelFastboot, stage === "fastboot" || stage === "flash");
@@ -752,7 +697,7 @@ function renderStageFlow() {
   setSectionVisible(els.panelFastbootFlashGrid, showFastbootFlashGrid);
   setSectionVisible(els.panelInstructions, stage !== "done" && stage !== "unsupported");
 
-  if (stage !== "update" && stage !== "install") {
+  if (stage !== "update") {
     stopAutoUpdateZipWatch();
   }
 }
@@ -855,6 +800,19 @@ function setActionMessage(message, kind = "neutral", link = "") {
   }
 }
 
+function setSupportLink(url = "") {
+  if (!els.supportLink) {
+    return;
+  }
+  if (url) {
+    els.supportLink.href = url;
+    els.supportLink.classList.remove("hidden");
+  } else {
+    els.supportLink.href = "#";
+    els.supportLink.classList.add("hidden");
+  }
+}
+
 function setProgress(percent) {
   const normalized = Math.max(0, Math.min(100, percent));
   els.progressBar.style.width = `${normalized}%`;
@@ -888,6 +846,134 @@ function normalizeModel(value) {
   return match ? match[1] : String(value).trim().toUpperCase();
 }
 
+function normalizeBrand(value) {
+  const lower = String(value || "").trim().toLowerCase();
+  if (!lower) {
+    return "";
+  }
+  if (lower.includes("oneplus") || lower.includes("oppo") || lower.includes("oplus")) {
+    return "oneplus";
+  }
+  if (lower.includes("xiaomi") || lower.includes("redmi") || lower.includes("poco")) {
+    return "xiaomi";
+  }
+  if (lower.includes("google")) {
+    return "google";
+  }
+  return lower;
+}
+
+function getFamilyFromCompanyCode(company) {
+  if (company === "xi") {
+    return "xiaomi";
+  }
+  if (company === "pi") {
+    return "pixel";
+  }
+  return "oneplus";
+}
+
+function getCompanyCodeByBrand(brand) {
+  const normalized = normalizeBrand(brand);
+  if (normalized === "oneplus") {
+    return "op";
+  }
+  if (normalized === "xiaomi") {
+    return "xi";
+  }
+  if (normalized === "google") {
+    return "pi";
+  }
+  return "";
+}
+
+function toTitleCaseModel(value) {
+  return String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => {
+      if (/[0-9]/.test(part)) {
+        return part.toUpperCase();
+      }
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+function getApiModelCandidates(info) {
+  const result = [];
+  const push = (value) => {
+    const text = String(value || "").trim();
+    if (!text) {
+      return;
+    }
+    if (!result.some((item) => item.toLowerCase() === text.toLowerCase())) {
+      result.push(text);
+    }
+  };
+
+  const model = String(info?.model || "").trim();
+  const rawModel = String(info?.rawModel || "").trim();
+  const product = String(info?.product || "").trim();
+  push(rawModel);
+  push(model);
+  push(toTitleCaseModel(model));
+  push(model.toUpperCase());
+  push(model.toLowerCase());
+  if (product) {
+    push(product);
+    push(product.toUpperCase());
+  }
+
+  return result;
+}
+
+function getFamilyLabel(family) {
+  if (family === "xiaomi") {
+    return "Xiaomi";
+  }
+  if (family === "pixel") {
+    return "Pixel";
+  }
+  if (family === "oneplus") {
+    return "OnePlus";
+  }
+  return "Android";
+}
+
+function getFileNameFromUrl(url) {
+  if (!url) {
+    return "";
+  }
+  try {
+    const pathname = new URL(url).pathname;
+    return decodeURIComponent(pathname.split("/").pop() || "");
+  } catch (_) {
+    return "";
+  }
+}
+
+async function fetchRomBootDecision(company, model, version) {
+  const params = new URLSearchParams({
+    company,
+    model,
+    version
+  });
+  const url = `${ROM_BOOT_API_URL}?${params.toString()}`;
+  appendLog(`API request: ${url}`);
+  const response = await fetch(url, { method: "GET", cache: "no-store" });
+  const payload = await response.json().catch(() => ({}));
+  const status = Number(payload?.status || response.status || 0);
+  appendLog(`API response: status=${status}, type=${payload?.type || "-"}, msg=${payload?.msg || "-"}`);
+  return {
+    status,
+    type: String(payload?.type || ""),
+    link: String(payload?.link || ""),
+    msg: String(payload?.msg || ""),
+    raw: payload
+  };
+}
+
 function formatVersionFromCompact(compact) {
   const digits = compact.replace(/\D/g, "");
   if (digits.length < 7) {
@@ -911,32 +997,33 @@ function extractVersion(text) {
     return "";
   }
 
-  const withDots = String(text).match(/(\d+\.\d+\.\d+\.\d+)/);
+  const raw = String(text).trim();
+  const withDots = raw.match(/(\d+\.\d+\.\d+\.\d+)/);
   if (withDots) {
     return withDots[1];
   }
 
-  const compact = String(text).match(/\b(\d{7,8})\b/);
+  const compact = raw.match(/\b(\d{7,8})\b/);
   if (compact) {
     return formatVersionFromCompact(compact[1]);
   }
 
+  const pixelLike = raw.match(/\b([A-Z]{2,6}\d[A-Z0-9]*(?:\.\d+){1,}[A-Z0-9.]*)\b/i);
+  if (pixelLike) {
+    return pixelLike[1];
+  }
+
+  const miLike = raw.match(/\b((?:OS|V)\d+(?:\.\d+){2,}[A-Z0-9.]*)\b/i);
+  if (miLike) {
+    return miLike[1];
+  }
+
+  const token = raw.split(/\s+/).find((part) => /[0-9]/.test(part));
+  if (token && token.length <= 48) {
+    return token.replace(/[),.;:]+$/, "");
+  }
+
   return "";
-}
-
-function buildCloudUpdateUrl(model, version) {
-  if (!model || !version) {
-    return "";
-  }
-
-  const clean = version.replace(/\D/g, "");
-  if (clean.length < 5) {
-    return "";
-  }
-
-  const head = clean.slice(0, 2);
-  const tail = clean.slice(2);
-  return `${CLOUD_BASE_URL}/${model.toLowerCase()}_${head}_${tail}.zip`;
 }
 
 function getRecommendedFlashEntry() {
@@ -957,36 +1044,30 @@ function detectFlashPartition(fileName) {
   return "init_boot";
 }
 
+function resolveFlashPartition(entry, fileName = "") {
+  const declared = String(entry?.partition || "").trim().toLowerCase();
+  if (declared === "boot" || declared === "init_boot") {
+    return declared;
+  }
+  return detectFlashPartition(fileName || entry?.imageFile || "");
+}
+
 function resolveImageDownloadUrl(entry) {
+  if (entry?.imageUrl) {
+    try {
+      const resolved = new URL(entry.imageUrl, window.location.href).toString();
+      if (/^https?:\/\//i.test(resolved)) {
+        return resolved;
+      }
+    } catch (_) {}
+  }
+
   const imageFile = entry?.imageFile || "";
   if (imageFile) {
     return new URL(`images/${imageFile}`, window.location.href).toString();
   }
 
-  if (entry?.imageUrl) {
-    return new URL(entry.imageUrl, window.location.href).toString();
-  }
-
   return "";
-}
-
-function compareVersion(a, b) {
-  const left = String(a).split(".").map((x) => Number.parseInt(x, 10) || 0);
-  const right = String(b).split(".").map((x) => Number.parseInt(x, 10) || 0);
-  const maxLen = Math.max(left.length, right.length);
-
-  for (let i = 0; i < maxLen; i += 1) {
-    const l = left[i] || 0;
-    const r = right[i] || 0;
-    if (l > r) {
-      return 1;
-    }
-    if (l < r) {
-      return -1;
-    }
-  }
-
-  return 0;
 }
 
 function parseDeviceMap(text) {
@@ -1015,66 +1096,6 @@ function parseDeviceMap(text) {
   }
 
   return map;
-}
-
-function parseImageEntry(fileName) {
-  const upperName = fileName.toUpperCase();
-  const modelMatch = upperName.match(/(CPH\d{4}|OPD\d{4})/);
-  if (!modelMatch) {
-    return null;
-  }
-
-  const model = modelMatch[1];
-  let version = extractVersion(fileName);
-
-  if (!version) {
-    const splitVersion = upperName.match(/_(\d{2})_(\d{5})/);
-    if (splitVersion) {
-      const tail = splitVersion[2];
-      version = `${Number.parseInt(splitVersion[1], 10)}.0.${Number.parseInt(tail.slice(0, 1), 10)}.${Number.parseInt(tail.slice(1), 10)}`;
-    }
-  }
-
-  if (!version) {
-    return null;
-  }
-
-  return {
-    model,
-    version,
-    imageFile: fileName,
-    imageUrl: `../images/${fileName}`,
-    updateUrl: buildCloudUpdateUrl(model, version)
-  };
-}
-
-function buildFallbackManifest() {
-  const images = BUILTIN_IMAGE_FILES.map((name) => parseImageEntry(name)).filter(Boolean);
-  return {
-    generatedAt: new Date().toISOString(),
-    images
-  };
-}
-
-async function loadManifest() {
-  try {
-    const response = await fetch("./manifest.json", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`manifest status ${response.status}`);
-    }
-
-    const manifest = await response.json();
-    const images = Array.isArray(manifest.images) ? manifest.images : [];
-    state.manifest = {
-      generatedAt: manifest.generatedAt || "",
-      images
-    };
-    appendLog(`Manifest נטען (${images.length} רשומות).`);
-    return;
-  } catch (error) {
-    state.manifest = buildFallbackManifest();
-    appendLog(`Manifest מקומי לא זמין, משתמשים ב-fallback (${state.manifest.images.length} רשומות).`, "WARN");
-  }
 }
 
 async function loadDeviceMap() {
@@ -1153,7 +1174,10 @@ function pickModelByProduct(productCode) {
   return "";
 }
 
-function recommendAction() {
+async function recommendAction() {
+  setSupportLink("");
+  const requestId = ++state.recommendationRequestId;
+
   if (!state.deviceInfo || !state.deviceInfo.model) {
     setDeviceSupportStatus(null, "", "");
     setActionMessage("חברו מכשיר ב-ADB כדי לקבל הנחיה אוטומטית.", "neutral");
@@ -1163,33 +1187,10 @@ function recommendAction() {
   }
 
   const model = normalizeModel(state.deviceInfo.model);
-  const entries = (state.manifest?.images || [])
-    .filter((entry) => normalizeModel(entry.model) === model)
-    .sort((a, b) => compareVersion(b.version, a.version));
-
-  if (entries.length === 0) {
-    const supportedModels = getSupportedModels();
-    const supportedText = supportedModels.length ? supportedModels.join(", ") : "אין רשימה זמינה";
-    setDeviceSupportStatus(
-      false,
-      model,
-      `זוהה ${model}, והוא לא נתמך כרגע. דגמים נתמכים: ${supportedText}`
-    );
-    state.actionRecommendation = null;
-    state.selectedUpdateZipHandle = null;
-    state.selectedUpdateZipName = "";
-    setActionMessage(
-      `המכשיר שזוהה (${model}) לא נתמך כרגע בכלי הזה לפי רשימת הקבצים הזמינים.`,
-      "error"
-    );
-    updateStatus(els.pushStatus, `מכשיר לא נתמך. דגמים נתמכים: ${supportedText}`);
-    renderProgressTracker();
-    refreshButtons();
-    return;
-  }
-
-  setDeviceSupportStatus(true, model, "");
   const version = state.deviceInfo.version;
+  const brand = normalizeBrand(state.deviceInfo.brand);
+  const company = getCompanyCodeByBrand(brand);
+
   if (!version) {
     state.actionRecommendation = null;
     state.selectedUpdateZipHandle = null;
@@ -1199,52 +1200,170 @@ function recommendAction() {
       "warning"
     );
     updateStatus(els.pushStatus, "גרסה לא זוהתה עדיין.");
+    updateStatus(els.downloadsStatus, "התחברו ב-ADB כדי לזהות גרסה לפני החלטה על עדכון.");
     renderProgressTracker();
     refreshButtons();
     return;
   }
 
-  const exact = entries.find((entry) => compareVersion(entry.version, version) === 0);
+  if (!company) {
+    const reason = `לא זוהה brand נתמך מהמכשיר (brand='${state.deviceInfo.brand || "-"}'). נדרש OnePlus/Xiaomi/Google.`;
+    setDeviceSupportStatus(false, model, reason);
+    state.actionRecommendation = null;
+    setActionMessage(reason, "error");
+    updateStatus(els.downloadsStatus, "לא ניתן לבחור company ל-API בלי brand ברור.");
+    updateStatus(els.pushStatus, "בדקו שהמכשיר מחובר ב-ADB ושזיהוי brand תקין.");
+    appendLog(`API selection blocked: brand='${state.deviceInfo.brand || "-"}' -> no company`, "WARN");
+    renderProgressTracker();
+    refreshButtons();
+    return;
+  }
 
-  if (exact) {
+  let chosenCompany = company;
+  let chosenModel = model;
+  let apiDecision = null;
+  let last404 = null;
+  const apiModels = getApiModelCandidates(state.deviceInfo);
+  appendLog(`API selection: brand=${brand}; company=${company}; models=${apiModels.join(" | ")}`);
+
+  for (const modelCandidate of apiModels) {
+    try {
+      const result = await fetchRomBootDecision(company, modelCandidate, version);
+      if (requestId !== state.recommendationRequestId) {
+        return;
+      }
+
+      if (result.status === 404) {
+        last404 = result;
+        continue;
+      }
+
+      chosenModel = modelCandidate;
+      apiDecision = result;
+      break;
+    } catch (error) {
+      if (requestId !== state.recommendationRequestId) {
+        return;
+      }
+      const reason = `לא הצלחנו לקבל החלטה מהשרת (${error.message}). נסו שוב בעוד כמה שניות.`;
+      setDeviceSupportStatus(false, model, reason);
+      state.actionRecommendation = null;
+      setActionMessage(reason, "error");
+      updateStatus(els.downloadsStatus, "שגיאת תקשורת מול API.");
+      updateStatus(els.pushStatus, "אין החלטה בטוחה לצריבה כרגע.");
+      appendLog(`קריאת API rom_boot_link נכשלה: ${error.message}`, "ERROR");
+      renderProgressTracker();
+      refreshButtons();
+      return;
+    }
+  }
+
+  if (requestId !== state.recommendationRequestId) {
+    return;
+  }
+
+  if (!apiDecision) {
+    const triedModels = apiModels.join(" | ");
+    const reason = last404?.msg || `הדגם ${model} לא נמצא בשרת ה-API.`;
+    setDeviceSupportStatus(false, model, reason);
+    state.actionRecommendation = null;
+    setActionMessage(`${reason} (נוסו מודלים: ${triedModels})`, "error");
+    updateStatus(els.downloadsStatus, "לא נמצא דגם תואם בשרת.");
+    updateStatus(els.pushStatus, "בדקו שם דגם או הוסיפו אותו בצד השרת.");
+    appendLog(`API model not found after variants: ${triedModels}`, "WARN");
+    renderProgressTracker();
+    refreshButtons();
+    return;
+  }
+
+  const family = getFamilyFromCompanyCode(chosenCompany);
+  const familyLabel = getFamilyLabel(family);
+
+  if (apiDecision.status === 200 && apiDecision.link) {
+    const sourceName = getFileNameFromUrl(apiDecision.link) || `${chosenModel}-${version}-boot.img`;
     state.actionRecommendation = {
       type: "flash-ready",
-      entry: exact
+      entry: {
+        family,
+        model: chosenModel,
+        version,
+        imageFile: sourceName,
+        imageUrl: apiDecision.link,
+        partition: detectFlashPartition(sourceName)
+      }
     };
     state.selectedUpdateZipHandle = null;
     state.selectedUpdateZipName = "";
-
+    setDeviceSupportStatus(true, model, "");
     setActionMessage(
-      `המכשיר על גרסה ${version}. נמצא init_boot תואם (${exact.imageFile}). אפשר לעבור ל-Fastboot ולצרוב.`,
+      `המכשיר (${familyLabel}) על גרסה ${version}. נמצא קובץ צריבה תואם מה-API (${sourceName}). אפשר לעבור ל-Fastboot ולצרוב.`,
       "success"
     );
-    updateStatus(els.flashStatus, `קובץ מומלץ מוכן לצריבה אוטומטית: ${exact.imageFile}`);
-    updateStatus(els.pushStatus, "אין צורך ב-ADB push לגרסה הזו.");
+    updateStatus(els.flashStatus, `קובץ מומלץ מוכן לצריבה אוטומטית: ${sourceName}`);
+    updateStatus(els.pushStatus, "אין צורך בעדכון. אפשר להמשיך לשלב Fastboot.");
+    updateStatus(els.downloadsStatus, "אין צורך בהורדת ZIP למכשיר הזה.");
+    if (state.deviceInfo?.serial) {
+      updateDeviceRecord(state.deviceInfo.serial, (record) => {
+        record.steps.updateInstalled = true;
+      });
+    }
     renderProgressTracker();
     refreshButtons();
     return;
   }
 
-  const bestTarget = entries[0];
-  state.actionRecommendation = {
-    type: "update-required",
-    entry: bestTarget
-  };
-  state.selectedUpdateZipHandle = null;
-  state.selectedUpdateZipName = "";
+  if (apiDecision.status === 202 && apiDecision.type === "full_flash" && apiDecision.link) {
+    const message = apiDecision.msg || "קיימת גרסה חדשה יותר. נדרש עדכון ביניים לפני צריבה.";
+    state.actionRecommendation = {
+      type: "update-required",
+      entry: {
+        family,
+        model: chosenModel,
+        version,
+        updateUrl: apiDecision.link
+      }
+    };
+    state.selectedUpdateZipHandle = null;
+    state.selectedUpdateZipName = "";
+    setDeviceSupportStatus(true, model, "");
+    setActionMessage(`${message} הורידו והתקינו ידנית ואז בדקו שוב גרסה ב-ADB.`, "warning", apiDecision.link);
+    updateStatus(els.downloadsStatus, "נדרש עדכון ביניים ידני לפי ה-API.");
+    updateStatus(els.pushStatus, "הורידו מהקישור, התקינו דרך Local install, ואז לחצו 'בדוק שוב גרסה ב-ADB'.");
+    if (state.deviceInfo?.serial) {
+      updateDeviceRecord(state.deviceInfo.serial, (record) => {
+        record.steps.updateInstalled = false;
+      });
+    }
+    renderProgressTracker();
+    refreshButtons();
+    return;
+  }
 
-  const updateLink = bestTarget.updateUrl || buildCloudUpdateUrl(model, bestTarget.version);
-  setActionMessage(
-    `המכשיר על גרסה ${version}, אבל קובץ הצריבה הקיים הוא לגרסה ${bestTarget.version}. צריך קודם לעדכן גרסה במכשיר, ורק אחרי זה לצרוב.`,
-    "warning",
-    updateLink
-  );
-  updateStatus(els.pushStatus, "נדרש עדכון גרסה. אפשר לחפש ZIP בתיקיית ההורדות ואז לבצע ADB push.");
+  if (apiDecision.status === 202 && apiDecision.type === "need_build") {
+    const reason = apiDecision.msg || `הגרסה ${version} לא נתמכת כרגע עבור ${model}.`;
+    setDeviceSupportStatus(false, model, reason);
+    state.actionRecommendation = {
+      type: "version-unsupported",
+      entry: null
+    };
+    setActionMessage(`${reason} פנו לקבוצת הצריבות בוואטסאפ לבניית גרסה מתאימה.`, "error");
+    setSupportLink(SUPPORT_WHATSAPP_URL);
+    updateStatus(els.downloadsStatus, "ה-API סימן שהגרסה דורשת בנייה.");
+    updateStatus(els.pushStatus, "לא ניתן להמשיך עד בניית קובץ תואם.");
+    renderProgressTracker();
+    refreshButtons();
+    return;
+  }
+
+  const reason = `תגובה לא מזוהה מה-API (${apiDecision.status}/${apiDecision.type || "-"})`;
+  setDeviceSupportStatus(false, model, reason);
+  state.actionRecommendation = null;
+  setActionMessage(reason, "error");
+  updateStatus(els.downloadsStatus, "לא התקבלה החלטה תקינה מהשרת.");
+  updateStatus(els.pushStatus, "עצרנו את התהליך כדי למנוע צריבה שגויה.");
+  appendLog(`API rom_boot_link החזיר מצב לא צפוי: ${JSON.stringify(apiDecision.raw || apiDecision)}`, "ERROR");
   renderProgressTracker();
   refreshButtons();
-  if (state.downloadsDirHandle) {
-    void handleFindUpdateZip({ silent: true });
-  }
 }
 
 function refreshButtons() {
@@ -1254,16 +1373,17 @@ function refreshButtons() {
   const unlocked = state.fastbootInfo?.unlocked === "yes";
   const needsUpdate = state.actionRecommendation?.type === "update-required";
   const autoFlashReady = state.actionRecommendation?.type === "flash-ready";
-  const hasDownloads = Boolean(state.downloadsDirHandle);
-  const hasSelectedZip = Boolean(state.selectedUpdateZipHandle);
   const flowEnabled = state.deviceSupport.supported !== false;
 
   els.btnRebootBootloader.disabled = !hasAdb || !flowEnabled;
   els.btnRebootBootloaderFastboot.disabled = !hasAdb || !flowEnabled;
-  els.btnPickDownloads.disabled = !("showDirectoryPicker" in window);
-  els.btnFindUpdateZip.disabled = !(flowEnabled && hasAdb && hasDownloads && needsUpdate);
-  els.btnPushUpdateZip.disabled = !(flowEnabled && hasAdb && needsUpdate && hasSelectedZip);
-  els.btnMarkUpdateInstalled.disabled = !(flowEnabled && needsUpdate);
+  els.btnPickDownloads.disabled = true;
+  els.btnFindUpdateZip.disabled = true;
+  els.btnPushUpdateZip.disabled = true;
+  els.btnMarkUpdateInstalled.disabled = true;
+  if (els.btnRecheckUpdate) {
+    els.btnRecheckUpdate.disabled = !(flowEnabled && needsUpdate);
+  }
   els.btnConnectFastboot.disabled = !flowEnabled;
   els.btnRebootDeviceFastboot.disabled = !(flowEnabled && hasFastboot);
   els.btnUnlock.disabled = !(flowEnabled && hasFastboot && state.fastbootInfo?.unlocked === "no");
@@ -1302,7 +1422,7 @@ function resolveCredentialStoreFactory(credentialModule) {
   if (typeof directCtor === "function") {
     return () => {
       if (directCtor === credentialModule.AdbWebCryptoCredentialManager && credentialModule.TangoIndexedDbStorage) {
-        return new directCtor(new credentialModule.TangoIndexedDbStorage(), "oneplus-web-flasher");
+        return new directCtor(new credentialModule.TangoIndexedDbStorage(), "android-web-flasher");
       }
       return new directCtor();
     };
@@ -1311,7 +1431,7 @@ function resolveCredentialStoreFactory(credentialModule) {
   if (credentialModule.AdbWebCryptoCredentialManager && credentialModule.TangoIndexedDbStorage) {
     return () => new credentialModule.AdbWebCryptoCredentialManager(
       new credentialModule.TangoIndexedDbStorage(),
-      "oneplus-web-flasher"
+      "android-web-flasher"
     );
   }
 
@@ -1495,16 +1615,23 @@ async function getAdbProp(adb, prop) {
 }
 
 async function readDeviceInfoFromAdb(adb, serialFallback = "") {
-  const modelCandidates = await Promise.all([
+  const [modelProp, vendorModelProp, nameProp, brandProp, manufacturerProp, vendorBrandProp] = await Promise.all([
     getAdbProp(adb, "ro.product.model"),
     getAdbProp(adb, "ro.product.vendor.model"),
-    getAdbProp(adb, "ro.product.name")
+    getAdbProp(adb, "ro.product.name"),
+    getAdbProp(adb, "ro.product.brand"),
+    getAdbProp(adb, "ro.product.manufacturer"),
+    getAdbProp(adb, "ro.product.vendor.brand")
   ]);
 
   const product = (await getAdbProp(adb, "ro.product.device")).trim();
   const versionDisplay = await getAdbProp(adb, "persist.sys.oplus.ota_ver_display");
   const buildDisplay = await getAdbProp(adb, "ro.build.display.id");
   const serial = (await getAdbProp(adb, "ro.serialno")) || serialFallback;
+  const rawModel = String(modelProp || vendorModelProp || nameProp || "").trim();
+  const brand = normalizeBrand(brandProp || manufacturerProp || vendorBrandProp || "");
+
+  const modelCandidates = [modelProp, vendorModelProp, nameProp];
 
   let model = modelCandidates.map((item) => normalizeModel(item)).find(Boolean) || "";
 
@@ -1519,6 +1646,8 @@ async function readDeviceInfoFromAdb(adb, serialFallback = "") {
 
   return {
     model,
+    rawModel,
+    brand,
     product,
     version,
     serial: serial || ""
@@ -1555,7 +1684,7 @@ async function handleCheckUsbMode() {
         message += ` | סריאלי: ${serial}`;
         if (state.deviceInfo) {
           updateDevicePanel(state.deviceInfo);
-          recommendAction();
+          await recommendAction();
         } else {
           setActionMessage(
             "זוהה Fastboot. לא נמצאה היסטוריה לסריאלי הזה, לכן מומלץ להתחבר קודם ב-ADB לזיהוי גרסה.",
@@ -1647,6 +1776,7 @@ async function handleConnectAdb() {
       updateDeviceRecord(info.serial, (record) => {
         const previousVersion = record.version;
         record.model = normalizeModel(info.model || record.model || "");
+        record.brand = normalizeBrand(info.brand || record.brand || "");
         record.product = info.product || record.product || "";
         record.version = info.version || record.version || "";
         record.steps.adbDetected = true;
@@ -1661,14 +1791,15 @@ async function handleConnectAdb() {
     }
 
     updateDevicePanel(info);
-    recommendAction();
+    await recommendAction();
     refreshButtons();
 
     const labelModel = info.model || "לא זוהה";
     const labelVersion = info.version || "לא זוהתה";
+    const labelBrand = info.brand || "לא זוהה";
 
-    updateStatus(els.adbStatus, `מחובר ל-ADB. דגם: ${labelModel}, גרסה: ${labelVersion}`);
-    appendLog(`ADB connected. model=${labelModel}, version=${labelVersion}, product=${info.product || "-"}`);
+    updateStatus(els.adbStatus, `מחובר ל-ADB. brand=${labelBrand}, דגם: ${labelModel}, גרסה: ${labelVersion}`);
+    appendLog(`ADB connected. brand=${labelBrand}, model=${labelModel}, version=${labelVersion}, product=${info.product || "-"}`);
     refreshButtons();
   } catch (error) {
     const message = humanizeConnectError(error, "ADB");
@@ -2046,6 +2177,23 @@ function handleMarkUpdateInstalled() {
   refreshButtons();
 }
 
+async function handleRecheckUpdate() {
+  const serial = getCurrentSerial();
+  if (serial) {
+    updateDeviceRecord(serial, (record) => {
+      record.steps.updatePushed = true;
+    });
+  }
+
+  updateStatus(els.pushStatus, "בודק שוב גרסה ב-ADB...");
+  await handleConnectAdb();
+  if (state.adb) {
+    updateStatus(els.pushStatus, "בדיקת גרסה הושלמה. אם הגרסה מתאימה, אפשר להמשיך לשלב Fastboot.");
+  } else {
+    updateStatus(els.pushStatus, "בדיקת גרסה נכשלה. נסו שוב להתחבר ב-ADB.", true);
+  }
+}
+
 async function handleRebootToBootloader() {
   if (!state.adb) {
     updateStatus(els.adbStatus, "יש להתחבר קודם ב-ADB.", true);
@@ -2101,6 +2249,7 @@ async function readFastbootInfo(device) {
     unlocked,
     currentSlot,
     model,
+    brand: normalizeBrand(state.deviceInfo?.brand || savedRecord?.brand || ""),
     version: state.deviceInfo?.version || savedRecord?.version || ""
   };
 }
@@ -2137,6 +2286,12 @@ async function handleConnectFastboot() {
           || savedRecord?.model
           || ""
       ),
+      brand: normalizeBrand(
+        state.fastbootInfo.brand
+          || (canReusePrevious ? previousInfo?.brand : "")
+          || savedRecord?.brand
+          || ""
+      ),
       product: state.fastbootInfo.product
         || (canReusePrevious ? previousInfo?.product : "")
         || savedRecord?.product
@@ -2151,6 +2306,7 @@ async function handleConnectFastboot() {
     if (state.deviceInfo.serial) {
       updateDeviceRecord(state.deviceInfo.serial, (record) => {
         record.model = normalizeModel(state.deviceInfo.model || record.model || "");
+        record.brand = normalizeBrand(state.deviceInfo.brand || record.brand || "");
         record.product = state.deviceInfo.product || record.product || "";
         record.version = state.deviceInfo.version || record.version || "";
         if (state.fastbootInfo.unlocked === "yes") {
@@ -2160,7 +2316,7 @@ async function handleConnectFastboot() {
     }
 
     updateDevicePanel(state.deviceInfo);
-    recommendAction();
+    await recommendAction();
 
     const unlockText = state.fastbootInfo.unlocked || "לא ידוע";
     updateStatus(
@@ -2310,7 +2466,7 @@ async function performFlash(blobOrFile, sourceName, partition) {
   if (needsUpdate && !record?.steps?.updateInstalled) {
     updateStatus(
       els.flashStatus,
-      "לפני צריבה צריך להשלים עדכון גרסה וללחוץ 'סיימתי להתקין עדכון במכשיר'.",
+      "לפני צריבה צריך להשלים עדכון גרסה ידני ואז ללחוץ 'בדוק שוב גרסה ב-ADB'.",
       true
     );
     return false;
@@ -2361,9 +2517,10 @@ async function handleAutoFlash() {
     return;
   }
 
-  const partition = detectFlashPartition(entry.imageFile);
-  updateStatus(els.flashStatus, `מוריד קובץ צריבה מומלץ: ${entry.imageFile}`);
-  appendLog(`Downloading recommended image: ${entry.imageFile} (${url})`);
+  const sourceName = entry.imageFile || getFileNameFromUrl(url) || "boot.img";
+  const partition = resolveFlashPartition(entry, sourceName);
+  updateStatus(els.flashStatus, `מוריד קובץ צריבה מומלץ: ${sourceName}`);
+  appendLog(`Downloading recommended image: ${sourceName} (${url})`);
   showProgress(true);
   setProgress(0);
 
@@ -2374,7 +2531,7 @@ async function handleAutoFlash() {
       }
     });
     setProgress(40);
-    await performFlash(blob, entry.imageFile, partition);
+    await performFlash(blob, sourceName, partition);
   } catch (error) {
     updateStatus(els.flashStatus, `הורדת קובץ אוטומטי נכשלה: ${error.message}`, true);
     appendLog(`Auto image download failed: ${error.message}`, "ERROR");
@@ -2435,14 +2592,24 @@ function wireEvents() {
   els.btnFindUpdateZip.addEventListener("click", handleFindUpdateZip);
   els.btnPushUpdateZip.addEventListener("click", handlePushUpdateZip);
   els.btnMarkUpdateInstalled.addEventListener("click", handleMarkUpdateInstalled);
-  els.btnDownloadUpdate.addEventListener("click", async () => {
-    updateStatus(els.pushStatus, "ההורדה התחילה. אחרי סיום ההורדה לחצו 'חפש ZIP עדכון בתיקייה'.");
-    appendLog("נלחץ כפתור הורדת ZIP עדכון.");
-    if (!state.downloadsDirHandle) {
-      await handlePickDownloadsFolder();
+  els.btnDownloadUpdate.addEventListener("click", () => {
+    const serial = getCurrentSerial();
+    if (serial) {
+      updateDeviceRecord(serial, (record) => {
+        record.steps.updatePushed = true;
+      });
     }
-    startAutoUpdateZipWatch();
+    updateStatus(els.pushStatus, "ההורדה התחילה. התקינו ידנית דרך Local install ואז לחצו 'בדוק שוב גרסה ב-ADB'.");
+    appendLog("נלחץ כפתור הורדת ZIP עדכון.");
   });
+  if (els.btnOpenUpdateGuide) {
+    els.btnOpenUpdateGuide.addEventListener("click", () => {
+      appendLog("נפתח דף הוראות עדכון ידני.");
+    });
+  }
+  if (els.btnRecheckUpdate) {
+    els.btnRecheckUpdate.addEventListener("click", handleRecheckUpdate);
+  }
   els.btnConnectFastboot.addEventListener("click", handleConnectFastboot);
   els.btnRebootDeviceFastboot.addEventListener("click", handleRebootDevice);
   els.btnUnlock.addEventListener("click", handleUnlockBootloader);
@@ -2466,13 +2633,7 @@ async function init() {
     appendLog(`Secure context OK: ${window.location.origin}`);
   }
 
-  if (!("showDirectoryPicker" in window)) {
-    updateStatus(
-      els.downloadsStatus,
-      "הדפדפן לא תומך בבחירת תיקייה. השתמש ב-Chrome/Edge עדכני.",
-      true
-    );
-  }
+  updateStatus(els.downloadsStatus, "הכלי עובד במסלול עדכון ידני (ללא ADB push).");
 
   loadDeviceHistory();
   loadPreflightState();
@@ -2482,7 +2643,12 @@ async function init() {
   }
 
   wireEvents();
-  await Promise.all([loadManifest(), loadDeviceMap()]);
+  if (els.btnOpenUpdateGuide) {
+    els.btnOpenUpdateGuide.href = UPDATE_GUIDE_URL;
+  }
+  setSupportLink("");
+  appendLog(`API mode active: ${ROM_BOOT_API_URL}`);
+  await loadDeviceMap();
   renderPreflightChecklist();
   renderProgressTracker();
   refreshButtons();
