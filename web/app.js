@@ -233,7 +233,7 @@ function getAutoContinueLabel(stage) {
   }
 
   if (stage === "fastboot") {
-    if (state.fastboot && state.fastbootInfo?.unlocked === "no") {
+    if (state.fastboot && isFastbootLocked()) {
       return "פתח Bootloader";
     }
     if (state.adb && !state.fastboot) {
@@ -249,7 +249,7 @@ function getAutoContinueLabel(stage) {
       }
       return "חיבור Fastboot ואז צריבה";
     }
-    if (state.fastbootInfo?.unlocked !== "yes") {
+    if (!isFastbootUnlocked()) {
       return "פתח Bootloader לפני צריבה";
     }
     return getRecommendedFlashEntry() ? "צרוב אוטומטית מהמאגר" : "צרוב עכשיו";
@@ -325,7 +325,7 @@ async function runAutoContinue() {
       }
     }
 
-    if (state.fastbootInfo?.unlocked === "no") {
+    if (isFastbootLocked()) {
       await handleUnlockBootloader();
       updateAutoContinueStatus("נשלחה פקודת unlock. אשרו במכשיר וחזרו ל-Fastboot.");
       return;
@@ -350,7 +350,7 @@ async function runAutoContinue() {
       }
     }
 
-    if (state.fastbootInfo?.unlocked !== "yes") {
+    if (!isFastbootUnlocked()) {
       await handleUnlockBootloader();
       updateAutoContinueStatus("ה-Bootloader עדיין נעול. בצעו unlock ואז נסו שוב.", true);
       return;
@@ -638,7 +638,7 @@ function computeUiStage() {
     return "update";
   }
 
-  const unlocked = steps.bootloaderUnlocked || state.fastbootInfo?.unlocked === "yes";
+  const unlocked = steps.bootloaderUnlocked || isFastbootUnlocked();
   if (!unlocked) {
     return "fastboot";
   }
@@ -861,6 +861,33 @@ function normalizeBrand(value) {
     return "google";
   }
   return lower;
+}
+
+function normalizeFastbootUnlockedValue(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) {
+    return "";
+  }
+  if (["yes", "true", "1", "unlocked", "on"].includes(raw)) {
+    return "yes";
+  }
+  if (["no", "false", "0", "locked", "off"].includes(raw)) {
+    return "no";
+  }
+  return raw;
+}
+
+function isFastbootUnlocked(info = state.fastbootInfo) {
+  return normalizeFastbootUnlockedValue(info?.unlocked) === "yes";
+}
+
+function isFastbootLocked(info = state.fastbootInfo) {
+  return normalizeFastbootUnlockedValue(info?.unlocked) === "no";
+}
+
+function formatFastbootUnlockText(info = state.fastbootInfo) {
+  const normalized = normalizeFastbootUnlockedValue(info?.unlocked);
+  return normalized || "לא ידוע";
 }
 
 function getFamilyFromCompanyCode(company) {
@@ -1370,7 +1397,7 @@ function refreshButtons() {
   const hasAdb = Boolean(state.adb);
   const hasFastboot = Boolean(state.fastboot);
   const hasFile = Boolean(els.flashFile.files && els.flashFile.files.length > 0);
-  const unlocked = state.fastbootInfo?.unlocked === "yes";
+  const unlocked = isFastbootUnlocked();
   const needsUpdate = state.actionRecommendation?.type === "update-required";
   const autoFlashReady = state.actionRecommendation?.type === "flash-ready";
   const flowEnabled = state.deviceSupport.supported !== false;
@@ -1386,7 +1413,7 @@ function refreshButtons() {
   }
   els.btnConnectFastboot.disabled = !flowEnabled;
   els.btnRebootDeviceFastboot.disabled = !(flowEnabled && hasFastboot);
-  els.btnUnlock.disabled = !(flowEnabled && hasFastboot && state.fastbootInfo?.unlocked === "no");
+  els.btnUnlock.disabled = !(flowEnabled && hasFastboot && isFastbootLocked());
   els.btnFlashAuto.disabled = !(flowEnabled && hasFastboot && unlocked && autoFlashReady);
   els.btnFlash.disabled = !(flowEnabled && hasFastboot && hasFile && unlocked);
   els.btnRebootDevice.disabled = !(flowEnabled && hasFastboot);
@@ -2221,7 +2248,8 @@ async function handleRebootToBootloader() {
 
 async function readFastbootInfo(device) {
   const product = (await device.getVariable("product").catch(() => "")).trim();
-  const unlocked = (await device.getVariable("unlocked").catch(() => "")).trim().toLowerCase();
+  const unlockedRaw = (await device.getVariable("unlocked").catch(() => "")).trim();
+  const unlocked = normalizeFastbootUnlockedValue(unlockedRaw);
   const currentSlot = (await device.getVariable("current-slot").catch(() => "")).trim();
   const serial = (await device.getVariable("serialno").catch(() => "")).trim()
     || (state.deviceInfo?.serial || "").trim();
@@ -2309,7 +2337,7 @@ async function handleConnectFastboot() {
         record.brand = normalizeBrand(state.deviceInfo.brand || record.brand || "");
         record.product = state.deviceInfo.product || record.product || "";
         record.version = state.deviceInfo.version || record.version || "";
-        if (state.fastbootInfo.unlocked === "yes") {
+        if (isFastbootUnlocked(state.fastbootInfo)) {
           record.steps.bootloaderUnlocked = true;
         }
       });
@@ -2318,13 +2346,13 @@ async function handleConnectFastboot() {
     updateDevicePanel(state.deviceInfo);
     await recommendAction();
 
-    const unlockText = state.fastbootInfo.unlocked || "לא ידוע";
+    const unlockText = formatFastbootUnlockText(state.fastbootInfo);
     updateStatus(
       els.fastbootStatus,
       `מחובר ל-Fastboot. serial=${state.fastbootInfo.serial || "-"}, product=${state.fastbootInfo.product || "-"}, unlocked=${unlockText}`
     );
 
-    if (unlockText === "no") {
+    if (isFastbootLocked(state.fastbootInfo)) {
       setActionMessage(
         "ה-Bootloader נעול. יש לפתוח אותו לפני צריבה (פעולה שמוחקת נתונים).",
         "warning"
@@ -2333,7 +2361,7 @@ async function handleConnectFastboot() {
         els.fastbootStatus,
         "Bootloader נעול. לחץ Unlock, אשר עם Volume Plus, ואז לחץ ארוך על Power + Volume Minus כדי לחזור ל-Fastboot מיד."
       );
-    } else if (unlockText === "yes" && state.deviceInfo?.serial) {
+    } else if (isFastbootUnlocked(state.fastbootInfo) && state.deviceInfo?.serial) {
       updateDeviceRecord(state.deviceInfo.serial, (record) => {
         record.steps.bootloaderUnlocked = true;
       });
@@ -2455,7 +2483,7 @@ async function performFlash(blobOrFile, sourceName, partition) {
     return false;
   }
 
-  if (state.fastbootInfo?.unlocked !== "yes") {
+  if (!isFastbootUnlocked()) {
     updateStatus(els.flashStatus, "ה-Bootloader נעול. יש לבצע unlock לפני צריבה.", true);
     return false;
   }
