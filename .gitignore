@@ -22,3 +22,6 @@ Thumbs.db
 
 # Large files protection (unless tracked)
 # *.img  <-- Commented out: We WANT to track images as per user request
+
+# Knox MDM setup page - local only, do not publish to GitHub Pages
+web/knox-setup.html
