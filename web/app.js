@@ -1627,6 +1627,9 @@ async function readDeviceInfoFromAdb(adb, serialFallback = "") {
   const product = (await getAdbProp(adb, "ro.product.device")).trim();
   const versionDisplay = await getAdbProp(adb, "persist.sys.oplus.ota_ver_display");
   const buildDisplay = await getAdbProp(adb, "ro.build.display.id");
+  const buildId = (await getAdbProp(adb, "ro.build.id")).trim();
+  const osIncremental = (await getAdbProp(adb, "ro.build.version.incremental")).trim();
+  const androidRelease = (await getAdbProp(adb, "ro.build.version.release")).trim();
   const serial = (await getAdbProp(adb, "ro.serialno")) || serialFallback;
   const rawModel = String(modelProp || vendorModelProp || nameProp || "").trim();
   const brand = normalizeBrand(brandProp || manufacturerProp || vendorBrandProp || "");
@@ -1642,7 +1645,17 @@ async function readDeviceInfoFromAdb(adb, serialFallback = "") {
     }
   }
 
-  const version = extractVersion(versionDisplay) || extractVersion(buildDisplay);
+  // Xiaomi/Redmi/Poco: ro.build.display.id is inconsistent (sometimes the AOSP id,
+  // sometimes the HyperOS string) and extractVersion drops the Android major, so an
+  // Android-16 init_boot could match an Android-15 device. ro.build.id (e.g.
+  // BP2A.250605.031.A3) encodes the Android major in its prefix (AP=15/BP=16/...) and
+  // matches the CDN init_boot filenames exactly, so prefer it for Xiaomi devices.
+  let version = "";
+  if (/xiaomi|redmi|poco/.test(brand.toLowerCase()) && buildId) {
+    version = buildId;
+  } else {
+    version = extractVersion(versionDisplay) || extractVersion(buildDisplay);
+  }
 
   return {
     model,
@@ -1650,6 +1663,9 @@ async function readDeviceInfoFromAdb(adb, serialFallback = "") {
     brand,
     product,
     version,
+    buildId,
+    osIncremental,
+    androidRelease,
     serial: serial || ""
   };
 }
@@ -1799,7 +1815,11 @@ async function handleConnectAdb() {
     const labelBrand = info.brand || "לא זוהה";
 
     updateStatus(els.adbStatus, `מחובר ל-ADB. brand=${labelBrand}, דגם: ${labelModel}, גרסה: ${labelVersion}`);
-    appendLog(`ADB connected. brand=${labelBrand}, model=${labelModel}, version=${labelVersion}, product=${info.product || "-"}`);
+    const extraVersionInfo = [
+      info.osIncremental ? `hyperos=${info.osIncremental}` : "",
+      info.androidRelease ? `android=${info.androidRelease}` : ""
+    ].filter(Boolean).join(", ");
+    appendLog(`ADB connected. brand=${labelBrand}, model=${labelModel}, version=${labelVersion}, product=${info.product || "-"}${extraVersionInfo ? `, ${extraVersionInfo}` : ""}`);
     refreshButtons();
   } catch (error) {
     const message = humanizeConnectError(error, "ADB");
