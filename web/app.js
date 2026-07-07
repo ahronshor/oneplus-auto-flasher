@@ -1645,14 +1645,14 @@ async function readDeviceInfoFromAdb(adb, serialFallback = "") {
     }
   }
 
-  // Xiaomi/Redmi/Poco: ro.build.display.id is inconsistent (sometimes the AOSP id,
-  // sometimes the HyperOS string) and extractVersion drops the Android major, so an
-  // Android-16 init_boot could match an Android-15 device. ro.build.id (e.g.
-  // BP2A.250605.031.A3) encodes the Android major in its prefix (AP=15/BP=16/...) and
-  // matches the CDN init_boot filenames exactly, so prefer it for Xiaomi devices.
+  // Xiaomi/Redmi/Poco: ro.build.version.incremental (e.g. OS3.0.10.0.WBOMIXM /
+  // V12.5.6.0.RCDMIXM) is the HyperOS version used to name the S3 init_boot files.
+  // Unlike ro.build.id (BP2A.250605.031.A3) it distinguishes Android majors
+  // (OS2=Android 15, OS3=Android 16) — build.id collides across them, which let an
+  // Android-16 init_boot match an Android-15 device and bootloop. Prefer it for Xiaomi.
   let version = "";
-  if (/xiaomi|redmi|poco/.test(brand.toLowerCase()) && buildId) {
-    version = buildId;
+  if (/xiaomi|redmi|poco/.test(brand.toLowerCase()) && osIncremental) {
+    version = osIncremental;
   } else {
     version = extractVersion(versionDisplay) || extractVersion(buildDisplay);
   }
