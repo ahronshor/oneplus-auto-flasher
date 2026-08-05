@@ -1,3 +1,4 @@
+// build marker: Pages source = GitHub Actions (single workflow deploy)
 const UPDATE_GUIDE_URL = "./update-guide.html";
 const SUPPORT_WHATSAPP_URL = "";
 const ROM_BOOT_API_URL = "https://admin-prod.koshersvr.com/api/rom_boot_link";
