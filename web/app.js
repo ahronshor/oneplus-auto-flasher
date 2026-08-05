@@ -54,6 +54,8 @@ const els = {
   btnPushUpdateZip: document.getElementById("btn-push-update-zip"),
   btnMarkUpdateInstalled: document.getElementById("btn-mark-update-installed"),
   btnConnectFastboot: document.getElementById("btn-connect-fastboot"),
+  btnRebootFastbootd: document.getElementById("btn-reboot-fastbootd"),
+  chkFlashSlot: document.getElementById("chk-flash-slot"),
   btnRebootDeviceFastboot: document.getElementById("btn-reboot-device-fastboot"),
   btnUnlock: document.getElementById("btn-unlock"),
   btnFlashAuto: document.getElementById("btn-flash-auto"),
@@ -1386,6 +1388,9 @@ function refreshButtons() {
   }
   els.btnConnectFastboot.disabled = !flowEnabled;
   els.btnRebootDeviceFastboot.disabled = !(flowEnabled && hasFastboot);
+  if (els.btnRebootFastbootd) {
+    els.btnRebootFastbootd.disabled = !(flowEnabled && hasFastboot);
+  }
   els.btnUnlock.disabled = !(flowEnabled && hasFastboot && state.fastbootInfo?.unlocked === "no");
   els.btnFlashAuto.disabled = !(flowEnabled && hasFastboot && unlocked && autoFlashReady);
   els.btnFlash.disabled = !(flowEnabled && hasFastboot && hasFile && unlocked);
@@ -2492,13 +2497,26 @@ async function performFlash(blobOrFile, sourceName, partition) {
     return false;
   }
 
-  updateStatus(els.flashStatus, `מתחיל צריבה למחיצת ${partition}: ${sourceName}`);
-  appendLog(`Starting flash ${partition} from ${sourceName}`);
+  // Unisoc/SPD devices (e.g. POCO C81 Pro = arctic) reject a plain `flash init_boot`
+  // with "Write img fail" and only accept an explicit slot suffix (init_boot_a/_b),
+  // flashed from fastbootd. When the operator enables slot-flashing and the device
+  // reports an A/B slot, target the active slot explicitly. Harmless elsewhere: the
+  // explicit active-slot partition is the same target a plain flash would resolve to.
+  let targetPartition = partition;
+  if (els.chkFlashSlot?.checked) {
+    const slot = String(state.fastbootInfo?.currentSlot || "").trim().toLowerCase();
+    if (slot === "a" || slot === "b") {
+      targetPartition = `${partition}_${slot}`;
+    }
+  }
+
+  updateStatus(els.flashStatus, `מתחיל צריבה למחיצת ${targetPartition}: ${sourceName}`);
+  appendLog(`Starting flash ${targetPartition} from ${sourceName}`);
   showProgress(true);
   setProgress(0);
 
   try {
-    await state.fastboot.flashBlob(partition, blobOrFile, (progressInfo) => {
+    await state.fastboot.flashBlob(targetPartition, blobOrFile, (progressInfo) => {
       setProgress(extractProgressPercent(progressInfo));
     });
 
@@ -2585,6 +2603,33 @@ async function handleRebootDevice() {
   }
 }
 
+// Reboot into fastbootd (userspace fastboot). Needed for Unisoc/SPD devices whose
+// bootloader fastboot rejects boot-partition writes ("Write img fail"); the same
+// flash succeeds from fastbootd. The device re-enumerates, so the current fastboot
+// connection drops and the operator must click "חיבור Fastboot" again.
+async function handleRebootToFastbootd() {
+  if (!state.fastboot) {
+    updateStatus(els.fastbootStatus, "יש להתחבר קודם ל-Fastboot.", true);
+    return;
+  }
+
+  try {
+    await state.fastboot.reboot("fastboot");
+    appendLog("נשלחה פקודת reboot-fastboot (מעבר ל-fastbootd).");
+  } catch (error) {
+    // The device disconnects as it re-enumerates into fastbootd — that's expected.
+    appendLog(`reboot-fastboot: ${error.message} (צפוי — המכשיר מתאתחל ל-fastbootd)`, "WARN");
+  }
+
+  state.fastboot = null;
+  state.fastbootInfo = null;
+  updateStatus(
+    els.fastbootStatus,
+    "מעבר ל-fastbootd... המתן שהמכשיר יעלה מחדש, ואז לחץ 'חיבור Fastboot' שוב וסמן 'צריבה לסלוט הפעיל'."
+  );
+  refreshButtons();
+}
+
 function handleFileSelection() {
   const file = els.flashFile.files?.[0];
   if (file) {
@@ -2632,6 +2677,9 @@ function wireEvents() {
   }
   els.btnConnectFastboot.addEventListener("click", handleConnectFastboot);
   els.btnRebootDeviceFastboot.addEventListener("click", handleRebootDevice);
+  if (els.btnRebootFastbootd) {
+    els.btnRebootFastbootd.addEventListener("click", handleRebootToFastbootd);
+  }
   els.btnUnlock.addEventListener("click", handleUnlockBootloader);
   els.btnFlashAuto.addEventListener("click", handleAutoFlash);
   els.btnFlash.addEventListener("click", handleFlash);

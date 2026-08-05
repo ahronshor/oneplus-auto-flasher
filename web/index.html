@@ -122,8 +122,13 @@
           <p>אפשר להעביר אוטומטית ל-Fastboot בלחיצה, או לעבור ידנית ואז להתחבר.</p>
           <button id="btn-reboot-bootloader-fastboot" class="btn btn-secondary" disabled>העבר עכשיו ל-Fastboot (ADB reboot bootloader)</button>
           <button id="btn-connect-fastboot" class="btn">חיבור Fastboot</button>
+          <button id="btn-reboot-fastbootd" class="btn btn-secondary" disabled>מעבר ל-fastbootd (Unisoc/SPD)</button>
           <button id="btn-reboot-device-fastboot" class="btn btn-secondary" disabled>הפעל מחדש למערכת (Fastboot reboot)</button>
           <button id="btn-unlock" class="btn btn-danger" disabled>Bootloader Unlock (מוחק נתונים)</button>
+          <label class="checkbox-line" for="chk-flash-slot" style="display:block; margin-top:8px;">
+            <input type="checkbox" id="chk-flash-slot" />
+            צריבה לסלוט הפעיל (Unisoc/SPD) — למשל POCO C81 Pro / arctic
+          </label>
           <div id="fastboot-status" class="status-line">לא מחובר ל-Fastboot.</div>
         </article>
 
