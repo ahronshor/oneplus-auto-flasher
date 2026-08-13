@@ -78,6 +78,7 @@ const els = {
   action: document.getElementById("recommended-action"),
   updateLink: document.getElementById("update-link"),
   supportLink: document.getElementById("support-link"),
+  firmwareLink: document.getElementById("firmware-link"),
   stageTitle: document.getElementById("stage-title"),
   stageDescription: document.getElementById("stage-description"),
   autoContinueStatus: document.getElementById("auto-continue-status"),
@@ -816,6 +817,39 @@ function setSupportLink(url = "") {
   }
 }
 
+// mifirm.net indexes Xiaomi stock ROMs by device codename (ro.product.device —
+// creek / arctic / kunzite …), which is exactly what we already read off the
+// device. When no patched image exists yet, hand the operator the precise page
+// customer service should pull the firmware from, instead of a bare "contact
+// support" that leaves them hunting for the right build.
+const MIFIRM_MODEL_URL = "https://mifirm.net/model/";
+
+function buildXiaomiFirmwareUrl(codename) {
+  const slug = String(codename || "").trim().toLowerCase();
+  // Codenames are plain lowercase identifiers; anything else means we misread
+  // the prop, and a bogus URL is worse than no link.
+  if (!/^[a-z][a-z0-9_]*$/.test(slug)) {
+    return "";
+  }
+  return `${MIFIRM_MODEL_URL}${slug}.ttt`;
+}
+
+function setFirmwareLink(url = "", label = "") {
+  if (!els.firmwareLink) {
+    return;
+  }
+  if (url) {
+    els.firmwareLink.href = url;
+    if (label) {
+      els.firmwareLink.textContent = label;
+    }
+    els.firmwareLink.classList.remove("hidden");
+  } else {
+    els.firmwareLink.href = "#";
+    els.firmwareLink.classList.add("hidden");
+  }
+}
+
 function setProgress(percent) {
   const normalized = Math.max(0, Math.min(100, percent));
   els.progressBar.style.width = `${normalized}%`;
@@ -1179,6 +1213,7 @@ function pickModelByProduct(productCode) {
 
 async function recommendAction() {
   setSupportLink("");
+  setFirmwareLink("");
   const requestId = ++state.recommendationRequestId;
 
   if (!state.deviceInfo || !state.deviceInfo.model) {
@@ -1349,7 +1384,17 @@ async function recommendAction() {
       type: "version-unsupported",
       entry: null
     };
-    setActionMessage(`${reason} פנו לקבוצת הצריבות בוואטסאפ לבניית גרסה מתאימה.`, "error");
+    let message = `${reason} פנו לקבוצת הצריבות בוואטסאפ לבניית גרסה מתאימה.`;
+    // For Xiaomi we know exactly where the stock ROM lives, so give support the
+    // ready-made download page for this codename rather than just "ask support".
+    const codename = String(state.deviceInfo?.product || "").trim();
+    const firmwareUrl = brand === "xiaomi" ? buildXiaomiFirmwareUrl(codename) : "";
+    if (firmwareUrl) {
+      message += ` מסרו לשירות הלקוחות את הקישור להורדת הפירמוור של ${codename}: ${firmwareUrl}`;
+      setFirmwareLink(firmwareUrl, `קישור פירמוור עבור ${codename} — למסור לשירות הלקוחות`);
+      appendLog(`Xiaomi firmware link for support (${codename}): ${firmwareUrl}`);
+    }
+    setActionMessage(message, "error");
     setSupportLink(SUPPORT_WHATSAPP_URL);
     updateStatus(els.downloadsStatus, "ה-API סימן שהגרסה דורשת בנייה.");
     updateStatus(els.pushStatus, "לא ניתן להמשיך עד בניית קובץ תואם.");
