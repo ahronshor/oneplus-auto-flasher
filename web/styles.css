@@ -370,6 +370,47 @@ body {
   display: none !important;
 }
 
+/* Build name handed to whoever prepares the ROM. It's copied far more often
+   than it's read — usually off a phone — so the value and its copy button stay
+   on one tap-friendly row, and the value itself is LTR monospace so a long
+   codename+version string stays readable inside an RTL page. */
+.firmware-build {
+  margin-top: 0.6rem;
+}
+
+.firmware-build-label {
+  font-size: 0.82rem;
+  color: #475569;
+  margin-bottom: 0.3rem;
+}
+
+.firmware-build-value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.firmware-build-value code {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  background: #101a1f;
+  color: #cbf7ff;
+  border: 1px solid #233840;
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
+  direction: ltr;
+  text-align: left;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.firmware-build-value .btn {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 900px) {
   .grid.two {
     grid-template-columns: 1fr;

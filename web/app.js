@@ -79,6 +79,9 @@ const els = {
   updateLink: document.getElementById("update-link"),
   supportLink: document.getElementById("support-link"),
   firmwareLink: document.getElementById("firmware-link"),
+  firmwareBuildRow: document.getElementById("firmware-build-row"),
+  firmwareBuildName: document.getElementById("firmware-build-name"),
+  btnCopyBuild: document.getElementById("btn-copy-build"),
   stageTitle: document.getElementById("stage-title"),
   stageDescription: document.getElementById("stage-description"),
   autoContinueStatus: document.getElementById("auto-continue-status"),
@@ -834,6 +837,77 @@ function buildXiaomiFirmwareUrl(codename) {
   return `${MIFIRM_MODEL_URL}${slug}.ttt`;
 }
 
+// Every Xiaomi build is submitted under this suffix, so the person preparing the
+// ROM can paste the name verbatim: xi_<codename>-<version>-8-f93
+const XIAOMI_BUILD_SUFFIX = "8-f93";
+
+function buildXiaomiBuildName(codename, version) {
+  const slug = String(codename || "").trim().toLowerCase();
+  const ver = String(version || "").trim();
+  if (!/^[a-z][a-z0-9_]*$/.test(slug) || !ver) {
+    return "";
+  }
+  return `xi_${slug}-${ver}-${XIAOMI_BUILD_SUFFIX}`;
+}
+
+function setFirmwareBuildName(name = "") {
+  if (!els.firmwareBuildRow || !els.firmwareBuildName) {
+    return;
+  }
+  if (name) {
+    els.firmwareBuildName.textContent = name;
+    els.firmwareBuildRow.classList.remove("hidden");
+  } else {
+    els.firmwareBuildName.textContent = "";
+    els.firmwareBuildRow.classList.add("hidden");
+  }
+}
+
+async function handleCopyBuildName() {
+  const value = els.firmwareBuildName?.textContent || "";
+  if (!value) {
+    return;
+  }
+
+  const flash = (label) => {
+    if (!els.btnCopyBuild) {
+      return;
+    }
+    const original = "העתק";
+    els.btnCopyBuild.textContent = label;
+    setTimeout(() => {
+      els.btnCopyBuild.textContent = original;
+    }, 1500);
+  };
+
+  try {
+    // navigator.clipboard needs a secure context; the page is served over HTTPS,
+    // but fall back to the legacy path for older mobile browsers that lack it.
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const helper = document.createElement("textarea");
+      helper.value = value;
+      helper.setAttribute("readonly", "");
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
+      document.body.appendChild(helper);
+      helper.select();
+      helper.setSelectionRange(0, value.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(helper);
+      if (!ok) {
+        throw new Error("execCommand copy failed");
+      }
+    }
+    flash("הועתק ✓");
+    appendLog(`שם הבנייה הועתק: ${value}`);
+  } catch (error) {
+    flash("העתקה נכשלה");
+    appendLog(`העתקת שם הבנייה נכשלה: ${error.message}`, "WARN");
+  }
+}
+
 // A Xiaomi burn can dead-end two ways — the model isn't in the catalogue at all
 // (404) or the version still needs a build (202/need_build). Both look the same
 // to the operator, so both get the stock-ROM page for this codename appended to
@@ -847,6 +921,14 @@ function appendXiaomiFirmwareHint(message, brand) {
   }
   setFirmwareLink(url, `קישור פירמוור עבור ${codename} — למסור לשירות הלקוחות`);
   appendLog(`Xiaomi firmware link for support (${codename}): ${url}`);
+
+  const buildName = buildXiaomiBuildName(codename, state.deviceInfo?.version);
+  setFirmwareBuildName(buildName);
+  if (buildName) {
+    appendLog(`Xiaomi build name for support: ${buildName}`);
+    return `${message} מסרו לשירות הלקוחות את שם הבנייה ${buildName} יחד עם הקישור: ${url}`;
+  }
+
   return `${message} מסרו לשירות הלקוחות את הקישור להורדת הפירמוור של ${codename}: ${url}`;
 }
 
@@ -1230,6 +1312,7 @@ function pickModelByProduct(productCode) {
 async function recommendAction() {
   setSupportLink("");
   setFirmwareLink("");
+  setFirmwareBuildName("");
   const requestId = ++state.recommendationRequestId;
 
   if (!state.deviceInfo || !state.deviceInfo.model) {
@@ -2736,6 +2819,9 @@ function wireEvents() {
   els.btnRebootDeviceFastboot.addEventListener("click", handleRebootDevice);
   if (els.btnRebootFastbootd) {
     els.btnRebootFastbootd.addEventListener("click", handleRebootToFastbootd);
+  }
+  if (els.btnCopyBuild) {
+    els.btnCopyBuild.addEventListener("click", handleCopyBuildName);
   }
   els.btnUnlock.addEventListener("click", handleUnlockBootloader);
   els.btnFlashAuto.addEventListener("click", handleAutoFlash);
