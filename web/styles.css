@@ -196,6 +196,11 @@ body {
   padding: 0.8rem;
   border: 1px solid transparent;
   margin-bottom: 0.6rem;
+  /* The message can carry a ROM download URL — a single ~130-char unbreakable
+     token. Without this it sets the box's minimum width and drags the whole
+     page into horizontal scrolling on a phone. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .action-message.neutral {
