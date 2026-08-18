@@ -834,6 +834,22 @@ function buildXiaomiFirmwareUrl(codename) {
   return `${MIFIRM_MODEL_URL}${slug}.ttt`;
 }
 
+// A Xiaomi burn can dead-end two ways — the model isn't in the catalogue at all
+// (404) or the version still needs a build (202/need_build). Both look the same
+// to the operator, so both get the stock-ROM page for this codename appended to
+// the message and surfaced as a clickable link. Returns the message unchanged
+// for non-Xiaomi or when the codename is unusable.
+function appendXiaomiFirmwareHint(message, brand) {
+  const codename = String(state.deviceInfo?.product || "").trim();
+  const url = brand === "xiaomi" ? buildXiaomiFirmwareUrl(codename) : "";
+  if (!url) {
+    return message;
+  }
+  setFirmwareLink(url, `קישור פירמוור עבור ${codename} — למסור לשירות הלקוחות`);
+  appendLog(`Xiaomi firmware link for support (${codename}): ${url}`);
+  return `${message} מסרו לשירות הלקוחות את הקישור להורדת הפירמוור של ${codename}: ${url}`;
+}
+
 function setFirmwareLink(url = "", label = "") {
   if (!els.firmwareLink) {
     return;
@@ -1305,7 +1321,8 @@ async function recommendAction() {
     const reason = last404?.msg || `הדגם ${model} לא נמצא בשרת ה-API.`;
     setDeviceSupportStatus(false, model, reason);
     state.actionRecommendation = null;
-    setActionMessage(`${reason} (נוסו מודלים: ${triedModels})`, "error");
+    setActionMessage(appendXiaomiFirmwareHint(`${reason} (נוסו מודלים: ${triedModels})`, brand), "error");
+    setSupportLink(SUPPORT_WHATSAPP_URL);
     updateStatus(els.downloadsStatus, "לא נמצא דגם תואם בשרת.");
     updateStatus(els.pushStatus, "בדקו שם דגם או הוסיפו אותו בצד השרת.");
     appendLog(`API model not found after variants: ${triedModels}`, "WARN");
@@ -1384,16 +1401,10 @@ async function recommendAction() {
       type: "version-unsupported",
       entry: null
     };
-    let message = `${reason} פנו לקבוצת הצריבות בוואטסאפ לבניית גרסה מתאימה.`;
-    // For Xiaomi we know exactly where the stock ROM lives, so give support the
-    // ready-made download page for this codename rather than just "ask support".
-    const codename = String(state.deviceInfo?.product || "").trim();
-    const firmwareUrl = brand === "xiaomi" ? buildXiaomiFirmwareUrl(codename) : "";
-    if (firmwareUrl) {
-      message += ` מסרו לשירות הלקוחות את הקישור להורדת הפירמוור של ${codename}: ${firmwareUrl}`;
-      setFirmwareLink(firmwareUrl, `קישור פירמוור עבור ${codename} — למסור לשירות הלקוחות`);
-      appendLog(`Xiaomi firmware link for support (${codename}): ${firmwareUrl}`);
-    }
+    const message = appendXiaomiFirmwareHint(
+      `${reason} פנו לקבוצת הצריבות בוואטסאפ לבניית גרסה מתאימה.`,
+      brand
+    );
     setActionMessage(message, "error");
     setSupportLink(SUPPORT_WHATSAPP_URL);
     updateStatus(els.downloadsStatus, "ה-API סימן שהגרסה דורשת בנייה.");
