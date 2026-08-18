@@ -850,12 +850,15 @@ function buildXiaomiBuildName(codename, version) {
   return `xi_${slug}-${ver}-${XIAOMI_BUILD_SUFFIX}`;
 }
 
-function setFirmwareBuildName(name = "") {
+// Renders the exact line the build system expects — "<name> <rom-url>" — so what
+// the operator sees is byte-for-byte what the copy button puts on the clipboard.
+function setFirmwareBuildName(name = "", url = "") {
   if (!els.firmwareBuildRow || !els.firmwareBuildName) {
     return;
   }
-  if (name) {
-    els.firmwareBuildName.textContent = name;
+  const payload = [name, url].filter(Boolean).join(" ");
+  if (payload) {
+    els.firmwareBuildName.textContent = payload;
     els.firmwareBuildRow.classList.remove("hidden");
   } else {
     els.firmwareBuildName.textContent = "";
@@ -923,10 +926,11 @@ function appendXiaomiFirmwareHint(message, brand) {
   appendLog(`Xiaomi firmware link for support (${codename}): ${url}`);
 
   const buildName = buildXiaomiBuildName(codename, state.deviceInfo?.version);
-  setFirmwareBuildName(buildName);
+  // Hand over one ready-to-paste line: the build name and the ROM page together.
+  setFirmwareBuildName(buildName, url);
   if (buildName) {
-    appendLog(`Xiaomi build name for support: ${buildName}`);
-    return `${message} מסרו לשירות הלקוחות את שם הבנייה ${buildName} יחד עם הקישור: ${url}`;
+    appendLog(`Xiaomi build request for support: ${buildName} ${url}`);
+    return `${message} מסרו לשירות הלקוחות את השורה: ${buildName} ${url}`;
   }
 
   return `${message} מסרו לשירות הלקוחות את הקישור להורדת הפירמוור של ${codename}: ${url}`;
