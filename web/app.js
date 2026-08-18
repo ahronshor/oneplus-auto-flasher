@@ -883,31 +883,70 @@ async function handleCopyBuildName() {
     }, 1500);
   };
 
-  try {
-    // navigator.clipboard needs a secure context; the page is served over HTTPS,
-    // but fall back to the legacy path for older mobile browsers that lack it.
-    if (navigator.clipboard?.writeText) {
+  // navigator.clipboard exists in plenty of contexts where it still refuses to
+  // write — an unfocused document, an embedded/permission-restricted webview,
+  // Safari outside a trusted gesture. Presence is not permission, so treat a
+  // rejection the same as absence and fall through to the legacy path, which
+  // only needs the click we're already inside of.
+  if (navigator.clipboard?.writeText) {
+    try {
       await navigator.clipboard.writeText(value);
-    } else {
-      const helper = document.createElement("textarea");
-      helper.value = value;
-      helper.setAttribute("readonly", "");
-      helper.style.position = "fixed";
-      helper.style.opacity = "0";
-      document.body.appendChild(helper);
-      helper.select();
+      flash("הועתק ✓");
+      appendLog(`שם הבנייה הועתק: ${value}`);
+      return;
+    } catch (error) {
+      appendLog(`clipboard API נכשל (${error.message}) — עובר לשיטה חלופית.`, "WARN");
+    }
+  }
+
+  try {
+    const helper = document.createElement("textarea");
+    helper.value = value;
+    helper.setAttribute("readonly", "");
+    // Keep it on-screen-but-invisible: display:none or visibility:hidden make the
+    // selection uncopyable, and iOS ignores selections on off-viewport nodes.
+    helper.style.position = "fixed";
+    helper.style.top = "0";
+    helper.style.left = "0";
+    helper.style.width = "1px";
+    helper.style.height = "1px";
+    helper.style.padding = "0";
+    helper.style.border = "none";
+    helper.style.outline = "none";
+    helper.style.boxShadow = "none";
+    helper.style.background = "transparent";
+    helper.style.opacity = "0";
+    helper.contentEditable = "true";
+    document.body.appendChild(helper);
+
+    helper.focus();
+    helper.select();
+    // iOS Safari ignores select() on a textarea and needs an explicit range.
+    if (helper.setSelectionRange) {
       helper.setSelectionRange(0, value.length);
-      const ok = document.execCommand("copy");
-      document.body.removeChild(helper);
-      if (!ok) {
-        throw new Error("execCommand copy failed");
-      }
+    }
+
+    const ok = document.execCommand("copy");
+    document.body.removeChild(helper);
+    if (!ok) {
+      throw new Error("execCommand('copy') returned false");
     }
     flash("הועתק ✓");
-    appendLog(`שם הבנייה הועתק: ${value}`);
+    appendLog(`שם הבנייה הועתק (שיטה חלופית): ${value}`);
   } catch (error) {
-    flash("העתקה נכשלה");
-    appendLog(`העתקת שם הבנייה נכשלה: ${error.message}`, "WARN");
+    // Both paths refused — make the text selectable so the operator can copy it
+    // by hand instead of being stuck.
+    flash("סמנו והעתיקו ידנית");
+    appendLog(`העתקה אוטומטית נכשלה: ${error.message}. סמנו את השורה והעתיקו ידנית.`, "WARN");
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(els.firmwareBuildName);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } catch (_) {
+      /* selection is a nicety; ignore if the browser blocks it too */
+    }
   }
 }
 
