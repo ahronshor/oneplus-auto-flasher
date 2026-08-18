@@ -955,24 +955,32 @@ async function handleCopyBuildName() {
 // to the operator, so both get the stock-ROM page for this codename appended to
 // the message and surfaced as a clickable link. Returns the message unchanged
 // for non-Xiaomi or when the codename is unusable.
-function appendXiaomiFirmwareHint(message, brand) {
+function appendXiaomiFirmwareHint(message, brand, firmwareUrl = "") {
   const codename = String(state.deviceInfo?.product || "").trim();
-  const url = brand === "xiaomi" ? buildXiaomiFirmwareUrl(codename) : "";
-  if (!url) {
+  const pageUrl = brand === "xiaomi" ? buildXiaomiFirmwareUrl(codename) : "";
+  if (!pageUrl) {
     return message;
   }
-  setFirmwareLink(url, `קישור פירמוור עבור ${codename} — למסור לשירות הלקוחות`);
-  appendLog(`Xiaomi firmware link for support (${codename}): ${url}`);
+  setFirmwareLink(pageUrl, `קישור פירמוור עבור ${codename} — למסור לשירות הלקוחות`);
+  appendLog(`Xiaomi firmware page (${codename}): ${pageUrl}`);
 
-  const buildName = buildXiaomiBuildName(codename, state.deviceInfo?.version);
-  // Hand over one ready-to-paste line: the build name and the ROM page together.
-  setFirmwareBuildName(buildName, url);
-  if (buildName) {
-    appendLog(`Xiaomi build request for support: ${buildName} ${url}`);
-    return `${message} מסרו לשירות הלקוחות את השורה: ${buildName} ${url}`;
+  // The server resolves the direct CDN download when it can. That's what the
+  // build pipeline actually consumes, so prefer it and keep the mifirm page as
+  // the clickable link for a human to browse.
+  const romUrl = String(firmwareUrl || "").trim() || pageUrl;
+  if (firmwareUrl) {
+    appendLog(`Direct ROM download resolved by server: ${firmwareUrl}`);
   }
 
-  return `${message} מסרו לשירות הלקוחות את הקישור להורדת הפירמוור של ${codename}: ${url}`;
+  const buildName = buildXiaomiBuildName(codename, state.deviceInfo?.version);
+  // Hand over one ready-to-paste line: the build name and the ROM together.
+  setFirmwareBuildName(buildName, romUrl);
+  if (buildName) {
+    appendLog(`Xiaomi build request for support: ${buildName} ${romUrl}`);
+    return `${message} מסרו לשירות הלקוחות את השורה: ${buildName} ${romUrl}`;
+  }
+
+  return `${message} מסרו לשירות הלקוחות את הקישור להורדת הפירמוור של ${codename}: ${romUrl}`;
 }
 
 function setFirmwareLink(url = "", label = "") {
@@ -1137,6 +1145,12 @@ async function fetchRomBootDecision(company, model, version) {
     model,
     version
   });
+  // Codename (ro.product.device) lets the server resolve the stock-ROM download
+  // URL when nothing is built yet. Optional — the server ignores it if absent.
+  const product = String(state.deviceInfo?.product || "").trim();
+  if (product) {
+    params.set("product", product);
+  }
   const url = `${ROM_BOOT_API_URL}?${params.toString()}`;
   appendLog(`API request: ${url}`);
   const response = await fetch(url, { method: "GET", cache: "no-store" });
@@ -1148,6 +1162,7 @@ async function fetchRomBootDecision(company, model, version) {
     type: String(payload?.type || ""),
     link: String(payload?.link || ""),
     msg: String(payload?.msg || ""),
+    firmwareUrl: String(payload?.firmware_url || ""),
     raw: payload
   };
 }
@@ -1447,7 +1462,10 @@ async function recommendAction() {
     const reason = last404?.msg || `הדגם ${model} לא נמצא בשרת ה-API.`;
     setDeviceSupportStatus(false, model, reason);
     state.actionRecommendation = null;
-    setActionMessage(appendXiaomiFirmwareHint(`${reason} (נוסו מודלים: ${triedModels})`, brand), "error");
+    setActionMessage(
+      appendXiaomiFirmwareHint(`${reason} (נוסו מודלים: ${triedModels})`, brand, last404?.firmwareUrl),
+      "error"
+    );
     setSupportLink(SUPPORT_WHATSAPP_URL);
     updateStatus(els.downloadsStatus, "לא נמצא דגם תואם בשרת.");
     updateStatus(els.pushStatus, "בדקו שם דגם או הוסיפו אותו בצד השרת.");
@@ -1529,7 +1547,8 @@ async function recommendAction() {
     };
     const message = appendXiaomiFirmwareHint(
       `${reason} פנו לקבוצת הצריבות בוואטסאפ לבניית גרסה מתאימה.`,
-      brand
+      brand,
+      apiDecision.firmwareUrl
     );
     setActionMessage(message, "error");
     setSupportLink(SUPPORT_WHATSAPP_URL);
