@@ -82,6 +82,8 @@ const els = {
   firmwareBuildRow: document.getElementById("firmware-build-row"),
   firmwareBuildName: document.getElementById("firmware-build-name"),
   btnCopyBuild: document.getElementById("btn-copy-build"),
+  btnRequestBuild: document.getElementById("btn-request-build"),
+  buildRequestStatus: document.getElementById("build-request-status"),
   stageTitle: document.getElementById("stage-title"),
   stageDescription: document.getElementById("stage-description"),
   autoContinueStatus: document.getElementById("auto-continue-status"),
@@ -950,6 +952,73 @@ async function handleCopyBuildName() {
   }
 }
 
+const ROM_BUILD_REQUEST_URL = "https://admin-prod.koshersvr.com/api/rom_build_request";
+
+function setBuildRequestVisible(visible) {
+  if (!els.btnRequestBuild) {
+    return;
+  }
+  els.btnRequestBuild.classList.toggle("hidden", !visible);
+  els.btnRequestBuild.disabled = !visible;
+  if (!visible && els.buildRequestStatus) {
+    els.buildRequestStatus.textContent = "";
+  }
+}
+
+// Ask the server to start a build for this device. Only the identifiers we
+// already read off the device are sent — the server composes the build line and
+// the download URL itself, so nothing here can steer what gets built.
+async function handleRequestBuild() {
+  const brand = normalizeBrand(state.deviceInfo?.brand);
+  const company = getCompanyCodeByBrand(brand);
+  const product = String(state.deviceInfo?.product || "").trim();
+  const version = String(state.deviceInfo?.version || "").trim();
+  if (!company || !product || !version) {
+    updateStatus(els.buildRequestStatus, "חסרים פרטי מכשיר לבקשת בנייה.", true);
+    return;
+  }
+
+  // A build downloads several GB and occupies the builder for a while, so make
+  // the operator confirm rather than let a stray tap start one.
+  const confirmed = window.confirm(
+    `להפעיל עכשיו בנייה אוטומטית עבור ${product} ${version}?\nהבנייה אורכת זמן ומתבצעת בשרת הבניות.`);
+  if (!confirmed) {
+    return;
+  }
+
+  els.btnRequestBuild.disabled = true;
+  const originalLabel = els.btnRequestBuild.textContent;
+  els.btnRequestBuild.textContent = "שולח בקשה...";
+  updateStatus(els.buildRequestStatus, "שולח בקשת בנייה...");
+
+  try {
+    const params = new URLSearchParams({ company, version, product });
+    const response = await fetch(`${ROM_BUILD_REQUEST_URL}?${params.toString()}`,
+      { method: "POST", cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    const status = Number(payload?.status || response.status || 0);
+    const message = String(payload?.msg || "");
+    appendLog(`Build request: status=${status}, msg=${message}`);
+
+    if (status === 200) {
+      updateStatus(els.buildRequestStatus, message || "הבנייה הופעלה.");
+      // Started — leave it disabled so an impatient second click can't queue
+      // another request; the operator re-checks with "בדוק שוב גרסה ב-ADB".
+      els.btnRequestBuild.textContent = "הבנייה הופעלה ✓";
+      return;
+    }
+
+    updateStatus(els.buildRequestStatus, message || "בקשת הבנייה נכשלה.", true);
+    els.btnRequestBuild.textContent = originalLabel;
+    els.btnRequestBuild.disabled = false;
+  } catch (error) {
+    updateStatus(els.buildRequestStatus, `בקשת הבנייה נכשלה: ${error.message}`, true);
+    appendLog(`Build request failed: ${error.message}`, "ERROR");
+    els.btnRequestBuild.textContent = originalLabel;
+    els.btnRequestBuild.disabled = false;
+  }
+}
+
 // A Xiaomi burn can dead-end two ways — the model isn't in the catalogue at all
 // (404) or the version still needs a build (202/need_build). Both look the same
 // to the operator, so both get the stock-ROM page for this codename appended to
@@ -975,6 +1044,9 @@ function appendXiaomiFirmwareHint(message, brand, firmwareUrl = "") {
   const buildName = buildXiaomiBuildName(codename, state.deviceInfo?.version);
   // Hand over one ready-to-paste line: the build name and the ROM together.
   setFirmwareBuildName(buildName, romUrl);
+  // Offer the one-click build only once the server has actually resolved a
+  // downloadable ROM — without one there is nothing for the builder to fetch.
+  setBuildRequestVisible(Boolean(buildName && firmwareUrl));
   if (buildName) {
     appendLog(`Xiaomi build request for support: ${buildName} ${romUrl}`);
     return `${message} מסרו לשירות הלקוחות את השורה: ${buildName} ${romUrl}`;
@@ -1371,6 +1443,7 @@ async function recommendAction() {
   setSupportLink("");
   setFirmwareLink("");
   setFirmwareBuildName("");
+  setBuildRequestVisible(false);
   const requestId = ++state.recommendationRequestId;
 
   if (!state.deviceInfo || !state.deviceInfo.model) {
@@ -2884,6 +2957,9 @@ function wireEvents() {
   }
   if (els.btnCopyBuild) {
     els.btnCopyBuild.addEventListener("click", handleCopyBuildName);
+  }
+  if (els.btnRequestBuild) {
+    els.btnRequestBuild.addEventListener("click", handleRequestBuild);
   }
   els.btnUnlock.addEventListener("click", handleUnlockBootloader);
   els.btnFlashAuto.addEventListener("click", handleAutoFlash);
