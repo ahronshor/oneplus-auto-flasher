@@ -79,6 +79,7 @@ const els = {
   updateLink: document.getElementById("update-link"),
   supportLink: document.getElementById("support-link"),
   firmwareLink: document.getElementById("firmware-link"),
+  firmwareDownloadLink: document.getElementById("firmware-download-link"),
   firmwareBuildRow: document.getElementById("firmware-build-row"),
   firmwareBuildName: document.getElementById("firmware-build-name"),
   btnCopyBuild: document.getElementById("btn-copy-build"),
@@ -1030,13 +1031,17 @@ function appendXiaomiFirmwareHint(message, brand, firmwareUrl = "") {
   if (!pageUrl) {
     return message;
   }
-  setFirmwareLink(pageUrl, `קישור פירמוור עבור ${codename} — למסור לשירות הלקוחות`);
+  setFirmwareLink(pageUrl, `דף ההורדות של ${codename} — לבחירה ידנית`);
   appendLog(`Xiaomi firmware page (${codename}): ${pageUrl}`);
 
   // The server resolves the direct CDN download when it can. That's what the
   // build pipeline actually consumes, so prefer it and keep the mifirm page as
   // the clickable link for a human to browse.
   const romUrl = String(firmwareUrl || "").trim() || pageUrl;
+  // Both links stay on screen: the exact file for the normal path, and the
+  // model's download index so the ROM can still be picked by hand when the
+  // automatic resolution is wrong or the build fails.
+  setFirmwareDownloadLink(firmwareUrl);
   if (firmwareUrl) {
     appendLog(`Direct ROM download resolved by server: ${firmwareUrl}`);
   }
@@ -1068,6 +1073,22 @@ function setFirmwareLink(url = "", label = "") {
   } else {
     els.firmwareLink.href = "#";
     els.firmwareLink.classList.add("hidden");
+  }
+}
+
+function setFirmwareDownloadLink(url = "") {
+  if (!els.firmwareDownloadLink) {
+    return;
+  }
+  const href = String(url || "").trim();
+  if (href) {
+    els.firmwareDownloadLink.href = href;
+    els.firmwareDownloadLink.textContent =
+      `הורדה ישירה: ${getFileNameFromUrl(href) || "קובץ הפירמוור"}`;
+    els.firmwareDownloadLink.classList.remove("hidden");
+  } else {
+    els.firmwareDownloadLink.href = "#";
+    els.firmwareDownloadLink.classList.add("hidden");
   }
 }
 
@@ -1442,6 +1463,7 @@ function pickModelByProduct(productCode) {
 async function recommendAction() {
   setSupportLink("");
   setFirmwareLink("");
+  setFirmwareDownloadLink("");
   setFirmwareBuildName("");
   setBuildRequestVisible(false);
   const requestId = ++state.recommendationRequestId;
